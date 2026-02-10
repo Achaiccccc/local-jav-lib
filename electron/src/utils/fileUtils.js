@@ -1,0 +1,108 @@
+const path = require('path');
+const fs = require('fs-extra');
+
+/**
+ * 获取文件夹中的所有NFO文件
+ * @param {string} folderPath - 文件夹路径
+ * @returns {Promise<string[]>} - NFO文件路径数组
+ */
+async function getNfoFiles(folderPath) {
+  const files = await fs.readdir(folderPath);
+  return files
+    .filter(file => file.toLowerCase() === 'movie.nfo')
+    .map(file => path.join(folderPath, file));
+}
+
+/**
+ * 获取作品文件夹中的图片路径
+ * @param {string} folderPath - 作品文件夹路径
+ * @returns {Promise<{poster: string|null, fanart: string|null}>} - 图片路径
+ */
+async function getImagePaths(folderPath) {
+  const files = await fs.readdir(folderPath);
+  
+  let poster = null;
+  let fanart = null;
+  
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+    if (lowerFile === 'poster.jpg' || lowerFile === 'poster.png') {
+      poster = path.join(folderPath, file);
+    } else if (lowerFile === 'fanart.jpg' || lowerFile === 'fanart.png') {
+      fanart = path.join(folderPath, file);
+    }
+  }
+  
+  return { poster, fanart };
+}
+
+/**
+ * 检查文件夹是否为作品文件夹（包含movie.nfo）
+ * @param {string} folderPath - 文件夹路径
+ * @returns {Promise<boolean>} - 是否为作品文件夹
+ */
+async function isMovieFolder(folderPath) {
+  try {
+    const nfoPath = path.join(folderPath, 'movie.nfo');
+    return await fs.pathExists(nfoPath);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 读取图片文件并转换为base64
+ * @param {string} imagePath - 图片路径
+ * @returns {Promise<string>} - base64字符串
+ */
+async function readImageAsBase64(imagePath) {
+  try {
+    const buffer = await fs.readFile(imagePath);
+    const ext = path.extname(imagePath).toLowerCase();
+    const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  } catch (error) {
+    console.error(`读取图片失败: ${imagePath}`, error);
+    return null;
+  }
+}
+
+/**
+ * 检查文件夹中是否有视频文件
+ * @param {string} folderPath - 文件夹路径
+ * @returns {Promise<{playable: boolean, videoPath: string|null}>} - 是否可播放及视频文件路径
+ */
+async function checkVideoFile(folderPath) {
+  try {
+    const files = await fs.readdir(folderPath);
+    // 支持的视频格式
+    const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.ts', '.mpg', '.mpeg'];
+    
+    for (const file of files) {
+      const ext = path.extname(file).toLowerCase();
+      if (videoExtensions.includes(ext)) {
+        const videoPath = path.join(folderPath, file);
+        // 检查文件是否存在且可读
+        try {
+          await fs.access(videoPath, fs.constants.F_OK);
+          return { playable: true, videoPath: videoPath };
+        } catch {
+          continue;
+        }
+      }
+    }
+    
+    return { playable: false, videoPath: null };
+  } catch (error) {
+    console.error(`检查视频文件失败: ${folderPath}`, error);
+    return { playable: false, videoPath: null };
+  }
+}
+
+module.exports = {
+  getNfoFiles,
+  getImagePaths,
+  isMovieFolder,
+  readImageAsBase64,
+  checkVideoFile
+};

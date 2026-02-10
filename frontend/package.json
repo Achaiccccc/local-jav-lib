@@ -1,0 +1,25 @@
+{
+  "name": "javlibrary-frontend",
+  "version": "2.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@vueuse/core": "^10.7.0",
+    "dayjs": "^1.11.10",
+    "element-plus": "^2.5.0",
+    "jschardet": "^3.1.4",
+    "lodash-es": "^4.17.21",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "vite": "^5.0.10"
+  }
+}

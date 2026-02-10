@@ -1,0 +1,50 @@
+appId: com.javlibrary.app
+productName: JavLibrary
+directories:
+  buildResources: build
+  output: dist
+files:
+  - electron/**/*
+  - frontend/dist/**/*
+  - package.json
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
+  - "!**/node_modules/*.d.ts"
+  - "!**/node_modules/.bin"
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!.editorconfig"
+  - "!**/._*"
+  - "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+  - "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
+  - "!**/{appveyor.yml,.travis.yml,circle.yml}"
+  - "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # icon: build/icon.ico  # 暂时注释掉，避免需要资源编辑工具
+  # 完全禁用代码签名（开发环境不需要）
+  sign: null
+  signingHashAlgorithms: null
+  verifyUpdateCodeSignature: false
+  # 禁用资源编辑（避免使用 winCodeSign）
+  requestedExecutionLevel: null
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+electronVersion: 28.0.0
+# 配置 native 依赖的构建 - 完全跳过重新编译（使用已编译的版本）
+nodeGypRebuild: false
+# 禁用自动重新编译原生模块
+npmRebuild: false
+# 使用 asar 打包
+asar: true
+# 确保原生模块不被打包到 asar 中（必须放在 app.asar.unpacked 中）
+asarUnpack:
+  - "**/node_modules/sqlite3/**/*"
+  - "**/node_modules/**/*.node"
+# 配置构建选项，不重新编译依赖
+buildDependenciesFromSource: false

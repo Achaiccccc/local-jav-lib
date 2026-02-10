@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+electron/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+build/
+*.db
+*.db-journal
+
+# Vite cache
+.vite/
+frontend/.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Electron
+out/
+packages/
+
+# Environment
+.env
+.env.local
+
+# Documentation and test files (not for repository)
+CLEANUP_PROCESSES.md
+test-*.js
+test-*.md
+开发设计文档.md
+打包说明.md
+新建文本文档.txt
+genres_page.html
+frontend/FIX_NOTES.md
+electron-startup.log
+
+# Old backend directory (if exists)
+backend/
+
+# Temporary files
+*.tmp
+*.temp
