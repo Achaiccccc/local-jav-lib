@@ -56,7 +56,7 @@
 import { ref } from 'vue';
 import { VideoCamera } from '@element-plus/icons-vue';
 
-const contactEmail = ref('17688933240@163.com');
+const contactEmail = ref('x248336024@vip.qq.com');
 </script>
 
 <style scoped>
