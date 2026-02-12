@@ -106,46 +106,6 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     return { success: true };
   });
 
-  // 实时同步设置
-  ipcMain.handle('settings:getRealtimeSync', () => {
-    return settingsStore.get('enableRealtimeSync', true); // 默认开启
-  });
-
-  ipcMain.handle('settings:setRealtimeSync', async (event, value) => {
-    settingsStore.set('enableRealtimeSync', value);
-    
-    // 根据设置启动或停止文件监听
-    const { initFileWatcher, stopFileWatcher } = require('../services/sync');
-    const { getDataPaths } = require('../config/paths');
-    
-    if (value) {
-      // 启动文件监听
-      try {
-        const dataPaths = getDataPaths();
-        if (dataPaths && dataPaths.length > 0) {
-          const watchers = await initFileWatcher(dataPaths, mainWindow);
-          console.log('实时同步已启用，文件监听已启动');
-          return { success: true, message: '实时同步已启用' };
-        } else {
-          return { success: false, message: '数据路径未设置' };
-        }
-      } catch (error) {
-        console.error('启动文件监听失败:', error);
-        return { success: false, message: '启动文件监听失败: ' + error.message };
-      }
-    } else {
-      // 停止文件监听
-      try {
-        await stopFileWatcher();
-        console.log('实时同步已禁用，文件监听已停止');
-        return { success: true, message: '实时同步已禁用' };
-      } catch (error) {
-        console.error('停止文件监听失败:', error);
-        return { success: false, message: '停止文件监听失败: ' + error.message };
-      }
-    }
-  });
-
   // 播放相关IPC
   ipcMain.handle('movie:playVideo', async (event, movieId) => {
     try {
@@ -592,15 +552,12 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         await writeNfoFile(nfoPath, movieData);
       }
       
-      // 如果实时同步已禁用，临时监听该文件夹的NFO文件变化（5秒）
-      const enableRealtimeSync = settingsStore.get('enableRealtimeSync', true);
-      if (!enableRealtimeSync) {
-        const { watchFolderTemporarily } = require('../services/sync');
-        const folderPath = path.dirname(nfoPath);
-        watchFolderTemporarily(folderPath, mainWindow, 5000).catch(err => {
-          console.error('临时监听失败:', err);
-        });
-      }
+      // 编辑后临时监听该文件夹 NFO 变化（5 秒），便于外部修改 NFO 时同步
+      const { watchFolderTemporarily } = require('../services/sync');
+      const folderPath = path.dirname(nfoPath);
+      watchFolderTemporarily(folderPath, mainWindow, 5000).catch(err => {
+        console.error('临时监听失败:', err);
+      });
       
       // 重新查询影片数据以返回最新信息（确保关联数据被正确加载）
       const updatedMovie = await Movie.findByPk(movieId, {
@@ -2082,6 +2039,26 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       };
     } catch (error) {
       console.error('扫描失败:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  ipcMain.handle('system:runStartupSync', async () => {
+    try {
+      const dataPaths = getDataPaths();
+      if (!dataPaths || dataPaths.length === 0) {
+        return { success: false, message: '未设置数据路径，请先添加数据文件夹' };
+      }
+      const { runStartupSync } = require('../services/sync');
+      const mainWindow = mainWindowRef || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+      const result = await runStartupSync(dataPaths, mainWindow);
+      const { added, removed, addedList = [], duplicateList = [], failedList = [] } = result;
+      if ((added > 0 || removed > 0) && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('file:changed', { type: 'startup_sync_done', added, removed });
+      }
+      return { success: true, added, removed, addedList, duplicateList, failedList };
+    } catch (error) {
+      console.error('仅扫描新增或修改失败:', error);
       return { success: false, message: error.message };
     }
   });
