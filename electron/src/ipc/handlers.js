@@ -437,8 +437,30 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         return { success: true, data: { originalplot: null, previewImagePaths: [] } };
       }
       const dataPaths = getDataPaths();
+      if (!dataPaths || dataPaths.length === 0) {
+        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+      }
+      // 解析实际根路径：优先用 data_path_index，若该根下文件不存在则依次尝试其他根（避免索引陈旧或迁移错误导致取不到数据）
       const dataPathIndex = movie.data_path_index != null ? movie.data_path_index : 0;
-      const dataPath = dataPaths[dataPathIndex] || dataPaths[0];
+      const preferredRoot = dataPaths[dataPathIndex] || dataPaths[0];
+      let dataPath = null;
+      const checkPath = (root) => {
+        if (movie.nfo_path) {
+          return fs.pathExists(path.join(root, movie.nfo_path));
+        }
+        return fs.pathExists(path.join(root, movie.folder_path));
+      };
+      if (await checkPath(preferredRoot)) {
+        dataPath = preferredRoot;
+      } else {
+        for (const root of dataPaths) {
+          if (root === preferredRoot) continue;
+          if (await checkPath(root)) {
+            dataPath = root;
+            break;
+          }
+        }
+      }
       if (!dataPath) {
         return { success: true, data: { originalplot: null, previewImagePaths: [] } };
       }
