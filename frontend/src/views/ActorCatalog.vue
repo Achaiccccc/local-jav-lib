@@ -65,7 +65,7 @@
           </div>
           <div v-else class="actors-grid" :class="`grid-${gridSize}`">
               <el-card
-                v-for="item in sortedItems"
+                v-for="(item, index) in sortedItems"
                 :key="item.id"
                 class="actor-card"
                 shadow="hover"
@@ -76,6 +76,7 @@
                     <template v-if="showActorMode && item.avatar?.hasAvatar">
                       <div class="actor-avatar-wrap">
                         <el-image
+                          v-if="index <= avatarLoadedUntil"
                           :src="item.avatar.url"
                           fit="cover"
                           class="actor-avatar-image"
@@ -84,9 +85,17 @@
                             <div class="actor-avatar-slot">加载失败</div>
                           </template>
                         </el-image>
+                        <div
+                          v-else
+                          class="actor-avatar-slot"
+                        >
+                          加载中…
+                        </div>
                       </div>
                     </template>
-                    <div class="actor-name">
+                    <div class="actor-name" :title="item.display_name && item.display_name.trim()
+                          ? item.display_name.trim()
+                          : (item.name || '')">
                       {{
                         item.display_name && item.display_name.trim()
                           ? item.display_name.trim()
@@ -386,6 +395,28 @@ const sortedItems = computed(() => {
   }
 });
 
+// 头像按滚动渐进加载：初始仅加载前若干条，滚动时再逐步放开后续条目
+const avatarLoadedUntil = ref(500);
+
+function updateAvatarLoadedRange() {
+  const total = sortedItems.value.length;
+  if (!total) return;
+  const scrollTop =
+    window.scrollY ||
+    document.documentElement.scrollTop ||
+    document.body.scrollTop ||
+    0;
+  const docHeight =
+    (document.documentElement.scrollHeight || 0) - window.innerHeight;
+  const ratio = docHeight > 0 ? scrollTop / docHeight : 0;
+  const approxIndex = Math.floor(ratio * total);
+  const preload = 300;
+  const target = approxIndex + preload;
+  if (target > avatarLoadedUntil.value) {
+    avatarLoadedUntil.value = Math.min(total - 1, target);
+  }
+}
+
 // 加载过滤设置
 const loadFilterPlayable = async () => {
   try {
@@ -428,6 +459,9 @@ function onActorProfileChanged() {
 onMounted(() => {
   loadFilterPlayable();
   loadCatalog();
+  try {
+    window.addEventListener('scroll', updateAvatarLoadedRange, { passive: true });
+  } catch (_) {}
 
   window.addEventListener('actorAvatarChanged', () => {
     if (isActorOnly.value) return;
@@ -467,6 +501,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   try {
     window.removeEventListener('actorProfileChanged', onActorProfileChanged);
+  } catch (_) {}
+  try {
+    window.removeEventListener('scroll', updateAvatarLoadedRange);
   } catch (_) {}
 });
 
@@ -654,6 +691,9 @@ watch(
   font-weight: bold;
   margin-bottom: 2px;
   color: var(--content-title-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .actors-grid.grid-small .actor-name { font-size: 11px; }
 .actors-grid.grid-large .actor-name { font-size: 13px; }
