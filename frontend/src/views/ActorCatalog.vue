@@ -71,6 +71,7 @@
           >
             <div
               v-if="topPadding > 0"
+              class="virtual-spacer"
               :style="{ height: topPadding + 'px' }"
             />
             <el-card
@@ -119,6 +120,7 @@
             </el-card>
             <div
               v-if="bottomPadding > 0"
+              class="virtual-spacer"
               :style="{ height: bottomPadding + 'px' }"
             />
           </div>
@@ -427,12 +429,16 @@ const rowHeight = ref(0);
 const itemsPerRow = ref(1);
 const gridOffsetTop = ref(0);
 const VIRTUAL_BUFFER_ROWS = 5;
+const GRID_GAP = 8;
+const isVirtualMeasurePaused = ref(false);
+let scrollRafId = 0;
 
 const visibleItems = computed(() => {
   return sortedItems.value.slice(visibleStartIndex.value, visibleEndIndex.value);
 });
 
 function updateVirtualRange() {
+  if (isVirtualMeasurePaused.value) return;
   const total = sortedItems.value.length;
   if (!total) {
     visibleStartIndex.value = 0;
@@ -450,6 +456,7 @@ function updateVirtualRange() {
   }
 
   const totalRows = Math.ceil(total / itemsPerRow.value);
+  const rowUnit = rowHeight.value + GRID_GAP;
   const scrollTop =
     window.scrollY ||
     document.documentElement.scrollTop ||
@@ -458,7 +465,7 @@ function updateVirtualRange() {
   const viewportTop = scrollTop;
   const viewportBottom = scrollTop + window.innerHeight;
   const gridTop = gridOffsetTop.value;
-  const gridBottom = gridTop + totalRows * rowHeight.value;
+  const gridBottom = gridTop + totalRows * rowHeight.value + Math.max(0, totalRows - 1) * GRID_GAP;
 
   if (viewportBottom < gridTop || viewportTop > gridBottom) {
     visibleStartIndex.value = 0;
@@ -469,8 +476,8 @@ function updateVirtualRange() {
   }
 
   const relativeTop = Math.max(0, viewportTop - gridTop);
-  const firstVisibleRow = Math.floor(relativeTop / rowHeight.value);
-  const visibleRowCount = Math.ceil(window.innerHeight / rowHeight.value);
+  const firstVisibleRow = Math.floor(relativeTop / rowUnit);
+  const visibleRowCount = Math.ceil(window.innerHeight / rowUnit);
 
   const startRow = Math.max(0, firstVisibleRow - VIRTUAL_BUFFER_ROWS);
   const endRow = Math.min(totalRows - 1, firstVisibleRow + visibleRowCount + VIRTUAL_BUFFER_ROWS);
@@ -478,11 +485,12 @@ function updateVirtualRange() {
   visibleStartIndex.value = startRow * itemsPerRow.value;
   visibleEndIndex.value = Math.min(total, (endRow + 1) * itemsPerRow.value);
 
-  topPadding.value = startRow * rowHeight.value;
-  bottomPadding.value = Math.max(0, (totalRows - endRow - 1) * rowHeight.value);
+  topPadding.value = startRow * rowUnit;
+  bottomPadding.value = Math.max(0, (totalRows - endRow - 1) * rowUnit);
 }
 
 function measureGrid() {
+  if (isVirtualMeasurePaused.value) return;
   const el = gridRef.value;
   const list = sortedItems.value;
   if (!el || !list.length) return;
@@ -501,15 +509,14 @@ function measureGrid() {
     xlarge: 160,
     xxlarge: 200
   };
-  const gap = 8;
   const base = baseCardWidthMap[gridSize.value] || 100;
-  const perRow = Math.max(1, Math.floor(width / (base + gap)));
+  const perRow = Math.max(1, Math.floor(width / (base + GRID_GAP)));
   itemsPerRow.value = perRow;
 
   const firstCard = el.querySelector('.actor-card');
   if (firstCard) {
     const cardRect = firstCard.getBoundingClientRect();
-    rowHeight.value = cardRect.height + gap;
+    rowHeight.value = cardRect.height;
   } else {
     rowHeight.value = 140;
   }
@@ -557,12 +564,27 @@ function onActorProfileChanged() {
 }
 
 function handleScroll() {
-  updateVirtualRange();
+  if (isVirtualMeasurePaused.value) return;
+  if (scrollRafId) return;
+  scrollRafId = window.requestAnimationFrame(() => {
+    scrollRafId = 0;
+    updateVirtualRange();
+  });
 }
 
 function handleResize() {
   measureGrid();
 }
+
+watch(avatarPickerVisible, async (visible) => {
+  if (visible) {
+    isVirtualMeasurePaused.value = true;
+    return;
+  }
+  isVirtualMeasurePaused.value = false;
+  await nextTick();
+  measureGrid();
+});
 
 onMounted(async () => {
   loadFilterPlayable();
@@ -621,6 +643,10 @@ onBeforeUnmount(() => {
   try {
     window.removeEventListener('resize', handleResize);
   } catch (_) {}
+  if (scrollRafId) {
+    window.cancelAnimationFrame(scrollRafId);
+    scrollRafId = 0;
+  }
 });
 
 watch(
@@ -661,6 +687,9 @@ watch(
   display: grid;
   gap: 8px;
   padding: 16px 0;
+}
+.virtual-spacer {
+  grid-column: 1 / -1;
 }
 .actors-grid.grid-small {
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
