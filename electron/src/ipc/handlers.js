@@ -191,23 +191,30 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
+  /**
+   * 构建头像扫描用的演员别名列表。必须排除已软合并的记录（merged_to_id 非空）：
+   * 否则源演员仍以自身 NFO 名为 canonical 参与映射，会覆盖目标演员曾用名中的同名映射，
+   * Filetree 键会落到独立 byActor key，合并后界面只查目标主名导致头像候选不全。
+   */
+  async function fetchActorsForAvatarAliasScan() {
+    const sequelize = getSequelize();
+    if (!sequelize?.models?.ActorFromNfo) return [];
+    const rows = await sequelize.models.ActorFromNfo.findAll({
+      attributes: ['name', 'display_name', 'former_names'],
+      where: { merged_to_id: null }
+    });
+    return rows.map(r => ({
+      name: r.name,
+      display_name: r.display_name || null,
+      former_names: r.former_names
+    }));
+  }
+
   /** 与「扫描演员信息」相同的逻辑，用于编辑/合并后自动刷新头像映射；后台执行不阻塞 IPC 返回 */
   function runActorAvatarScanInBackground() {
     const actorDataPath = settingsStore.get('actorDataPath', null);
     if (!actorDataPath) return;
-    const getActorsWithAliases = async () => {
-      const sequelize = getSequelize();
-      if (!sequelize?.models?.ActorFromNfo) return [];
-      const rows = await sequelize.models.ActorFromNfo.findAll({
-        attributes: ['name', 'display_name', 'former_names']
-      });
-      return rows.map(r => ({
-        name: r.name,
-        display_name: r.display_name || null,
-        former_names: r.former_names
-      }));
-    };
-    actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases)
+    actorAvatarService.scanFromActorDataPath(actorDataPath, fetchActorsForAvatarAliasScan)
       .then(() => { console.log('演员信息更新/合并后，头像映射已自动刷新'); })
       .catch(e => { console.warn('演员信息更新/合并后自动刷新头像映射失败:', e?.message || e); });
   }
@@ -216,19 +223,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     try {
       const actorDataPath = settingsStore.get('actorDataPath', null);
       if (!actorDataPath) return { success: false, message: '请先在设置中配置演员数据路径' };
-      const getActorsWithAliases = async () => {
-        const sequelize = getSequelize();
-        if (!sequelize?.models?.ActorFromNfo) return [];
-        const rows = await sequelize.models.ActorFromNfo.findAll({
-          attributes: ['name', 'display_name', 'former_names']
-        });
-        return rows.map(r => ({
-          name: r.name,
-          display_name: r.display_name || null,
-          former_names: r.former_names
-        }));
-      };
-      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases);
+      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath, fetchActorsForAvatarAliasScan);
       return result;
     } catch (e) {
       return { success: false, message: e.message || String(e) };
