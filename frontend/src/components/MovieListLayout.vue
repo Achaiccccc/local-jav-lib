@@ -23,6 +23,10 @@
             style="width: 180px;"
             @change="$emit('update:sortBy', $event)"
           >
+            <template v-if="favoriteListMode">
+              <el-option label="按记录时间倒序（最新在前）" value="addedAt-desc" />
+              <el-option label="按记录时间正序" value="addedAt-asc" />
+            </template>
             <el-option label="按发行时间排序-正序" value="premiered-asc" />
             <el-option label="按发行时间排序-倒序" value="premiered-desc" />
             <el-option label="按更新时间排序-正序" value="folder_updated_at-asc" />
@@ -113,7 +117,7 @@
           <div class="movie-poster">
             <el-image
               :src="imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''"
-              fit="contain"
+              fit="cover"
               style="width: 100%; height: 100%;"
               :lazy="true"
               @load="onImageLoad(movie)"
@@ -258,7 +262,9 @@ const props = defineProps({
   /** 按影片 code 的收藏夹 id 列表，用于判断是否已收藏：{ [code]: string[] } */
   favoriteFolderIdsByCode: { type: Object, default: () => ({}) },
   /** 列表页路由版本号：每次路由变化递增，用于清理缩图悬浮放大层 */
-  routeVersion: { type: Number, default: 0 }
+  routeVersion: { type: Number, default: 0 },
+  /** 收藏夹影片列表：增加按收藏/最近播放记录时间的排序项 */
+  favoriteListMode: { type: Boolean, default: false }
 });
 
 watch(
@@ -491,5 +497,9 @@ const onImageLoad = (movie) => {
   display: flex;
   justify-content: center;
 }
+
+/* :deep(.movies-grid .el-card__body) {
+  padding: 10px 10px 0;
+} */
 </style>
 

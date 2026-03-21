@@ -111,7 +111,7 @@ async function checkVideoFile(folderPath) {
   try {
     const files = await fs.readdir(folderPath);
     // 支持的视频格式
-    const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.ts', '.mpg', '.mpeg'];
+    const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.ts', '.mpg', '.mpeg', '.iso', '.m3u8'];
     
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();

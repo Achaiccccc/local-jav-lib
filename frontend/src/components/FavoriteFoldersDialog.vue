@@ -43,7 +43,7 @@ async function loadFolders() {
   try {
     const res = await window.electronAPI.favorites.getFolders();
     if (res?.success && Array.isArray(res.data)) {
-      folders.value = res.data;
+      folders.value = res.data.filter(f => f && !f.isRecentWatched && f.id !== 'recent_watched');
     }
   } catch (e) {
     console.error(e);

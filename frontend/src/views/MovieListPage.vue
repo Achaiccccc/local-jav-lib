@@ -105,13 +105,14 @@
           :total="total"
           :current-page="currentPage"
           :page-size="listParams.pageSize"
-          :sort-by="listParams.sortBy"
+          :sort-by="effectiveSortBy"
           :view-mode="listParams.viewMode"
           :image-cache="imageCache"
           :empty-text="emptyText"
           :enable-view-mode-toggle="true"
           :show-pagination="showPagination"
           :route-version="routeVersion"
+          :favorite-list-mode="listType === 'favorite'"
           @update:pageSize="handlePageSizeChange"
           @update:currentPage="handlePageChange"
           @update:sortBy="handleSortByChange"
@@ -120,7 +121,7 @@
           @playVideo="onPlayVideo"
           @toggleFavorite="onToggleFavorite"
           :load-movie-image="movie => loadMovieImage(movie.poster_path, movie.data_path_index)"
-          :show-favorite-heart="true"
+          :show-favorite-heart="listType !== 'favorite' || !isRecentWatchedFolder"
           :favorite-folder-ids-by-code="favoriteFolderIdsByCode"
         >
           <template #before-view-mode>
@@ -316,6 +317,13 @@ const directorName = ref('');
 const studioName = ref('');
 const favoriteFolderName = ref('');
 const favoriteFolderIdsByCode = ref({});
+/** 收藏夹影片列表专用排序（不入 listParamsStore，默认记录时间倒序） */
+const favoriteSortBy = ref('addedAt-desc');
+const effectiveSortBy = computed(() =>
+  listType.value === 'favorite' ? favoriteSortBy.value : listParams.sortBy
+);
+/** 最近看过列表：不展示收藏爱心 */
+const isRecentWatchedFolder = computed(() => route.params.id === 'recent_watched');
 const favoriteDialogVisible = ref(false);
 const favoriteDialogMovie = ref(null);
 const avatarPickerVisible = ref(false);
@@ -665,7 +673,7 @@ const loadDataRaw = async () => {
   loading.value = true;
   const page = currentPage.value;
   const pageSize = listParams.pageSize;
-  const sortBy = listParams.sortBy;
+  const sortBy = listType.value === 'favorite' ? favoriteSortBy.value : listParams.sortBy;
   const filterGenres = selectedGenreNames.value;
   const filterYears = selectedYears.value;
   let result = { success: false, data: [], total: 0 };
@@ -879,7 +887,11 @@ function handlePageSizeChange(size) {
 }
 
 function handleSortByChange(val) {
-  listParams.setSortBy(val);
+  if (listType.value === 'favorite') {
+    favoriteSortBy.value = val;
+  } else {
+    listParams.setSortBy(val);
+  }
   currentPage.value = 1;
   savePageState(pageKey.value, { currentPage: 1 });
   clearScrollPosition(pageKey.value);

@@ -328,12 +328,25 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         
         // 使用找到的路径
         await shell.openPath(foundPath);
+        if (movie.code) {
+          try {
+            favoritesService.recordRecentPlay(movie.code);
+          } catch (e) {
+            console.warn('recordRecentPlay 失败:', e?.message || e);
+          }
+        }
         return { success: true };
       }
       
       // 使用系统默认播放器打开视频文件
       await shell.openPath(videoPath);
-      
+      if (movie.code) {
+        try {
+          favoritesService.recordRecentPlay(movie.code);
+        } catch (e) {
+          console.warn('recordRecentPlay 失败:', e?.message || e);
+        }
+      }
       return { success: true };
     } catch (error) {
       console.error('播放视频失败:', error);
@@ -412,8 +425,10 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       ];
       let rows;
       let total = codes.length;
-      if (sortBy === 'addedAt-desc') {
-        const codesPage = codes.slice((page - 1) * pageSize, page * pageSize);
+      const orderByRecordTime = sortBy === 'addedAt-desc' || sortBy === 'addedAt-asc';
+      const codesInRecordOrder = sortBy === 'addedAt-asc' ? [...codes].reverse() : codes;
+      if (orderByRecordTime) {
+        const codesPage = codesInRecordOrder.slice((page - 1) * pageSize, page * pageSize);
         if (codesPage.length === 0) {
           return { success: true, data: [], total };
         }
