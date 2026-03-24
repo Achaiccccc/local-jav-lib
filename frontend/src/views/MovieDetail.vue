@@ -241,10 +241,26 @@
           </div>
         </Teleport>
 
-        <!-- 作品简介：来自 NFO 的 originalplot，无则不展示 -->
-        <div v-if="movie && detailExtras.originalplot" class="detail-section synopsis-section">
+        <!-- 作品简介：来自 NFO 的 originalplot/plot，无则不展示 -->
+        <div v-if="movie && hasSynopsis" class="detail-section synopsis-section">
           <div class="section-title">作品简介</div>
-          <div class="synopsis-text">{{ detailExtras.originalplot }}</div>
+          <div v-if="hasDualSynopsis" class="synopsis-switch">
+            <el-button
+              size="small"
+              :type="activeSynopsisKey === 'originalplot' ? 'primary' : 'default'"
+              @click="activeSynopsisKey = 'originalplot'"
+            >
+              简介1
+            </el-button>
+            <el-button
+              size="small"
+              :type="activeSynopsisKey === 'plot' ? 'primary' : 'default'"
+              @click="activeSynopsisKey = 'plot'"
+            >
+              简介2
+            </el-button>
+          </div>
+          <div class="synopsis-text">{{ activeSynopsisText }}</div>
         </div>
         
         <!-- 编辑对话框 -->
@@ -403,7 +419,8 @@ const movieId = computed(() => {
 const loading = ref(true);
 const movie = ref(null);
 const posterUrl = ref('');
-const detailExtras = ref({ originalplot: null, previewImagePaths: [] });
+const detailExtras = ref({ originalplot: null, plot: null, previewImagePaths: [] });
+const activeSynopsisKey = ref('originalplot');
 const previewImageUrls = ref([]);
 const previewVisible = ref(false);
 const previewCurrentIndex = ref(0);
@@ -415,6 +432,22 @@ const detailFavoriteFolderIds = ref([]);
 const hasPreviewImages = computed(() => {
   const paths = detailExtras.value.previewImagePaths;
   return Array.isArray(paths) && paths.length > 1;
+});
+
+const hasSynopsis = computed(() => {
+  return Boolean(detailExtras.value.originalplot || detailExtras.value.plot);
+});
+
+const hasDualSynopsis = computed(() => {
+  return Boolean(detailExtras.value.originalplot && detailExtras.value.plot);
+});
+
+const activeSynopsisText = computed(() => {
+  const originalplot = detailExtras.value.originalplot || '';
+  const plot = detailExtras.value.plot || '';
+  if (!hasDualSynopsis.value) return originalplot || plot;
+  if (activeSynopsisKey.value === 'plot') return plot;
+  return originalplot;
 });
 
 const currentPreviewUrl = computed(() => {
@@ -476,7 +509,8 @@ const loadMovie = async () => {
   try {
     loading.value = true;
     posterUrl.value = '';
-    detailExtras.value = { originalplot: null, previewImagePaths: [] };
+    detailExtras.value = { originalplot: null, plot: null, previewImagePaths: [] };
+    activeSynopsisKey.value = 'originalplot';
     previewImageUrls.value = [];
     if (!movieId.value) {
       ElMessage.error('无效的影片ID');
@@ -503,8 +537,16 @@ const loadMovie = async () => {
         if (extrasRes?.success && extrasRes.data) {
           detailExtras.value = {
             originalplot: extrasRes.data.originalplot ?? null,
+            plot: extrasRes.data.plot ?? null,
             previewImagePaths: Array.isArray(extrasRes.data.previewImagePaths) ? extrasRes.data.previewImagePaths : []
           };
+          if (detailExtras.value.originalplot) {
+            activeSynopsisKey.value = 'originalplot';
+          } else if (detailExtras.value.plot) {
+            activeSynopsisKey.value = 'plot';
+          } else {
+            activeSynopsisKey.value = 'originalplot';
+          }
           if (detailExtras.value.previewImagePaths.length) {
             const urls = [];
             for (const p of detailExtras.value.previewImagePaths) {
@@ -1079,6 +1121,12 @@ onMounted(() => {
   line-height: 1.6;
   color: var(--el-text-color-regular);
   font-size: 14px;
+}
+
+.synopsis-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .preview-thumb-wrap {

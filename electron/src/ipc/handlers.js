@@ -808,7 +808,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
-  /** 获取详情页扩展数据：NFO 中的 originalplot（作品简介）、预览图列表（详情图 + extrafanart 文件夹内图片） */
+  /** 获取详情页扩展数据：NFO 中的 originalplot/plot（作品简介）、预览图列表（详情图 + extrafanart 文件夹内图片） */
   ipcMain.handle('movies:getDetailExtras', async (event, id) => {
     try {
       const sequelize = getSequelize();
@@ -824,11 +824,11 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         attributes: ['folder_path', 'nfo_path', 'poster_path', 'fanart_path', 'data_path_index']
       });
       if (!movie || !movie.folder_path) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       const dataPaths = getDataPaths();
       if (!dataPaths || dataPaths.length === 0) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       // 解析实际根路径：优先用 data_path_index，若该根下文件不存在则依次尝试其他根（避免索引陈旧或迁移错误导致取不到数据）
       const dataPathIndex = movie.data_path_index != null ? movie.data_path_index : 0;
@@ -852,17 +852,19 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         }
       }
       if (!dataPath) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       let originalplot = null;
+      let plot = null;
       if (movie.nfo_path) {
         const nfoFullPath = path.join(dataPath, movie.nfo_path);
         try {
           if (await fs.pathExists(nfoFullPath)) {
             originalplot = await readNfoTagContent(nfoFullPath, 'originalplot');
+            plot = await readNfoTagContent(nfoFullPath, 'plot');
           }
         } catch (e) {
-          console.error('读取 NFO originalplot 失败:', e);
+          console.error('读取 NFO originalplot/plot 失败:', e);
         }
       }
       const extraPaths = await getExtraFanartRelativePaths(dataPath, movie.folder_path);
@@ -870,7 +872,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       const previewImagePaths = mainPath ? [mainPath, ...extraPaths] : [...extraPaths];
       return {
         success: true,
-        data: { originalplot: originalplot || null, previewImagePaths }
+        data: { originalplot: originalplot || null, plot: plot || null, previewImagePaths }
       };
     } catch (error) {
       console.error('获取详情扩展数据失败:', error);
