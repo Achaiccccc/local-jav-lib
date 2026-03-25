@@ -47,7 +47,6 @@ export const defaultGenreCategories = [
       '偷窥',
       '企画',
       '恶作剧',
-      '强奸',
       '倒追',
       '学校作品',
       '性感的',
@@ -66,7 +65,6 @@ export const defaultGenreCategories = [
       '蛮横娇羞',
       '处女',
       '处男',
-      '偷窥',
       '青年'
     ]
   },
@@ -161,7 +159,6 @@ export const defaultGenreCategories = [
       '校服',
       '空中小姐',
       '泳装',
-      '内衣',
       '制服',
       '浴衣'
     ]
@@ -207,7 +204,6 @@ export const defaultGenreCategories = [
       '排便',
       '淫语',
       '颜面骑乘',
-      '颜射',
       '手指插入',
       '拳交',
       '足交',
