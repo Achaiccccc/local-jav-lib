@@ -197,47 +197,18 @@
           </div>
         </div>
 
-        <!-- 自定义预览轮播层：中间下方显示页数 如 3/10 -->
+        <el-image-viewer
+          v-if="previewVisible"
+          :url-list="previewImageUrls"
+          :initial-index="previewCurrentIndex"
+          :hide-on-click-modal="true"
+          :teleported="true"
+          @switch="onPreviewSwitch"
+          @close="closePreview"
+        />
         <Teleport to="body">
-          <div
-            v-show="previewVisible"
-            class="preview-viewer-mask"
-            @click.self="closePreview"
-          >
-            <img
-              v-if="currentPreviewUrl"
-              class="preview-viewer-img"
-              :src="currentPreviewUrl"
-              alt=""
-              @click.stop
-            />
-            <div class="preview-viewer-pagination">{{ previewPageText }}</div>
-            <button
-              v-if="previewImageUrls.length > 1"
-              type="button"
-              class="preview-viewer-btn preview-viewer-prev"
-              aria-label="上一张"
-              @click.stop="prevPreview"
-            >
-              ‹
-            </button>
-            <button
-              v-if="previewImageUrls.length > 1"
-              type="button"
-              class="preview-viewer-btn preview-viewer-next"
-              aria-label="下一张"
-              @click.stop="nextPreview"
-            >
-              ›
-            </button>
-            <button
-              type="button"
-              class="preview-viewer-close"
-              aria-label="关闭"
-              @click.stop="closePreview"
-            >
-              ×
-            </button>
+          <div v-if="previewVisible && previewImageUrls.length > 0" class="preview-viewer-page-indicator">
+            {{ previewPageText }}
           </div>
         </Teleport>
 
@@ -450,16 +421,10 @@ const activeSynopsisText = computed(() => {
   return originalplot;
 });
 
-const currentPreviewUrl = computed(() => {
-  const urls = previewImageUrls.value;
-  const i = previewCurrentIndex.value;
-  return urls[i] || '';
-});
-
 const previewPageText = computed(() => {
   const total = previewImageUrls.value.length;
-  const current = previewCurrentIndex.value + 1;
-  return total ? `${current}/${total}` : '';
+  if (!total) return '';
+  return `${previewCurrentIndex.value + 1}/${total}`;
 });
 
 function openPreview(idx) {
@@ -471,16 +436,10 @@ function closePreview() {
   previewVisible.value = false;
 }
 
-function prevPreview() {
-  const len = previewImageUrls.value.length;
-  if (len <= 1) return;
-  previewCurrentIndex.value = (previewCurrentIndex.value - 1 + len) % len;
-}
-
-function nextPreview() {
-  const len = previewImageUrls.value.length;
-  if (len <= 1) return;
-  previewCurrentIndex.value = (previewCurrentIndex.value + 1) % len;
+function onPreviewSwitch(index) {
+  if (typeof index === 'number' && !Number.isNaN(index)) {
+    previewCurrentIndex.value = index;
+  }
 }
 const editFormRef = ref(null);
 const saving = ref(false);
@@ -889,27 +848,11 @@ onBeforeMount(() => {
   window.scrollTo({ top: 0, behavior: 'auto' });
 });
 
-function onPreviewKeydown(e) {
-  if (!previewVisible.value) return;
-  if (e.key === 'Escape') {
-    closePreview();
-    e.preventDefault();
-  } else if (e.key === 'ArrowLeft') {
-    prevPreview();
-    e.preventDefault();
-  } else if (e.key === 'ArrowRight') {
-    nextPreview();
-    e.preventDefault();
-  }
-}
-
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onPreviewKeydown);
   resumeBackgroundLoading();
 });
 
 onMounted(() => {
-  window.addEventListener('keydown', onPreviewKeydown);
   window.scrollTo({ top: 0, behavior: 'auto' });
   loadMovie();
 });
@@ -1133,88 +1076,6 @@ onMounted(() => {
   cursor: zoom-in;
 }
 
-/* 自定义预览轮播层：中间下方页数 + 左右切换 */
-.preview-viewer-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.preview-viewer-img {
-  max-width: 90vw;
-  max-height: 85vh;
-  object-fit: contain;
-  user-select: none;
-}
-
-.preview-viewer-pagination {
-  position: absolute;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-}
-
-.preview-viewer-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 48px;
-  height: 48px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-
-.preview-viewer-btn:hover {
-  background: rgba(255, 255, 255, 0.35);
-}
-
-.preview-viewer-prev {
-  left: 24px;
-}
-
-.preview-viewer-next {
-  right: 24px;
-}
-
-.preview-viewer-close {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  width: 40px;
-  height: 40px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-
-.preview-viewer-close:hover {
-  background: rgba(255, 255, 255, 0.35);
-}
 </style>
 
 <style>
@@ -1225,5 +1086,21 @@ onMounted(() => {
 
 .el-image-viewer__mask {
   cursor: pointer;
+}
+
+.preview-viewer-page-indicator {
+  position: fixed;
+  left: 50%;
+  bottom: 85px;
+  transform: translateX(-50%);
+  z-index: 2001;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.2;
+  pointer-events: none;
+  user-select: none;
 }
 </style>
