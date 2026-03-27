@@ -3,6 +3,7 @@
     v-model="dialogVisible"
     :title="'选择头像：' + (actorName || '')"
     width="520px"
+    :lock-scroll="false"
     destroy-on-close
     class="actor-avatar-picker-dialog"
     @closed="onClosed"

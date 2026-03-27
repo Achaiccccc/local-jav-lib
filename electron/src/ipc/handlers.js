@@ -191,23 +191,30 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
+  /**
+   * 构建头像扫描用的演员别名列表。必须排除已软合并的记录（merged_to_id 非空）：
+   * 否则源演员仍以自身 NFO 名为 canonical 参与映射，会覆盖目标演员曾用名中的同名映射，
+   * Filetree 键会落到独立 byActor key，合并后界面只查目标主名导致头像候选不全。
+   */
+  async function fetchActorsForAvatarAliasScan() {
+    const sequelize = getSequelize();
+    if (!sequelize?.models?.ActorFromNfo) return [];
+    const rows = await sequelize.models.ActorFromNfo.findAll({
+      attributes: ['name', 'display_name', 'former_names'],
+      where: { merged_to_id: null }
+    });
+    return rows.map(r => ({
+      name: r.name,
+      display_name: r.display_name || null,
+      former_names: r.former_names
+    }));
+  }
+
   /** 与「扫描演员信息」相同的逻辑，用于编辑/合并后自动刷新头像映射；后台执行不阻塞 IPC 返回 */
   function runActorAvatarScanInBackground() {
     const actorDataPath = settingsStore.get('actorDataPath', null);
     if (!actorDataPath) return;
-    const getActorsWithAliases = async () => {
-      const sequelize = getSequelize();
-      if (!sequelize?.models?.ActorFromNfo) return [];
-      const rows = await sequelize.models.ActorFromNfo.findAll({
-        attributes: ['name', 'display_name', 'former_names']
-      });
-      return rows.map(r => ({
-        name: r.name,
-        display_name: r.display_name || null,
-        former_names: r.former_names
-      }));
-    };
-    actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases)
+    actorAvatarService.scanFromActorDataPath(actorDataPath, fetchActorsForAvatarAliasScan)
       .then(() => { console.log('演员信息更新/合并后，头像映射已自动刷新'); })
       .catch(e => { console.warn('演员信息更新/合并后自动刷新头像映射失败:', e?.message || e); });
   }
@@ -216,19 +223,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     try {
       const actorDataPath = settingsStore.get('actorDataPath', null);
       if (!actorDataPath) return { success: false, message: '请先在设置中配置演员数据路径' };
-      const getActorsWithAliases = async () => {
-        const sequelize = getSequelize();
-        if (!sequelize?.models?.ActorFromNfo) return [];
-        const rows = await sequelize.models.ActorFromNfo.findAll({
-          attributes: ['name', 'display_name', 'former_names']
-        });
-        return rows.map(r => ({
-          name: r.name,
-          display_name: r.display_name || null,
-          former_names: r.former_names
-        }));
-      };
-      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases);
+      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath, fetchActorsForAvatarAliasScan);
       return result;
     } catch (e) {
       return { success: false, message: e.message || String(e) };
@@ -333,12 +328,25 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         
         // 使用找到的路径
         await shell.openPath(foundPath);
+        if (movie.code) {
+          try {
+            favoritesService.recordRecentPlay(movie.code);
+          } catch (e) {
+            console.warn('recordRecentPlay 失败:', e?.message || e);
+          }
+        }
         return { success: true };
       }
       
       // 使用系统默认播放器打开视频文件
       await shell.openPath(videoPath);
-      
+      if (movie.code) {
+        try {
+          favoritesService.recordRecentPlay(movie.code);
+        } catch (e) {
+          console.warn('recordRecentPlay 失败:', e?.message || e);
+        }
+      }
       return { success: true };
     } catch (error) {
       console.error('播放视频失败:', error);
@@ -417,8 +425,10 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       ];
       let rows;
       let total = codes.length;
-      if (sortBy === 'addedAt-desc') {
-        const codesPage = codes.slice((page - 1) * pageSize, page * pageSize);
+      const orderByRecordTime = sortBy === 'addedAt-desc' || sortBy === 'addedAt-asc';
+      const codesInRecordOrder = sortBy === 'addedAt-asc' ? [...codes].reverse() : codes;
+      if (orderByRecordTime) {
+        const codesPage = codesInRecordOrder.slice((page - 1) * pageSize, page * pageSize);
         if (codesPage.length === 0) {
           return { success: true, data: [], total };
         }
@@ -798,7 +808,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
-  /** 获取详情页扩展数据：NFO 中的 originalplot（作品简介）、预览图列表（详情图 + extrafanart 文件夹内图片） */
+  /** 获取详情页扩展数据：NFO 中的 originalplot/plot（作品简介）、预览图列表（详情图 + extrafanart 文件夹内图片） */
   ipcMain.handle('movies:getDetailExtras', async (event, id) => {
     try {
       const sequelize = getSequelize();
@@ -814,11 +824,11 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         attributes: ['folder_path', 'nfo_path', 'poster_path', 'fanart_path', 'data_path_index']
       });
       if (!movie || !movie.folder_path) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       const dataPaths = getDataPaths();
       if (!dataPaths || dataPaths.length === 0) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       // 解析实际根路径：优先用 data_path_index，若该根下文件不存在则依次尝试其他根（避免索引陈旧或迁移错误导致取不到数据）
       const dataPathIndex = movie.data_path_index != null ? movie.data_path_index : 0;
@@ -842,17 +852,19 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         }
       }
       if (!dataPath) {
-        return { success: true, data: { originalplot: null, previewImagePaths: [] } };
+        return { success: true, data: { originalplot: null, plot: null, previewImagePaths: [] } };
       }
       let originalplot = null;
+      let plot = null;
       if (movie.nfo_path) {
         const nfoFullPath = path.join(dataPath, movie.nfo_path);
         try {
           if (await fs.pathExists(nfoFullPath)) {
             originalplot = await readNfoTagContent(nfoFullPath, 'originalplot');
+            plot = await readNfoTagContent(nfoFullPath, 'plot');
           }
         } catch (e) {
-          console.error('读取 NFO originalplot 失败:', e);
+          console.error('读取 NFO originalplot/plot 失败:', e);
         }
       }
       const extraPaths = await getExtraFanartRelativePaths(dataPath, movie.folder_path);
@@ -860,7 +872,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       const previewImagePaths = mainPath ? [mainPath, ...extraPaths] : [...extraPaths];
       return {
         success: true,
-        data: { originalplot: originalplot || null, previewImagePaths }
+        data: { originalplot: originalplot || null, plot: plot || null, previewImagePaths }
       };
     } catch (error) {
       console.error('获取详情扩展数据失败:', error);

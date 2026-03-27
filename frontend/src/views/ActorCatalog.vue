@@ -63,49 +63,66 @@
           <div v-else-if="actors.length === 0" class="empty-state">
             <el-empty :description="getEmptyDescription()" />
           </div>
-          <div v-else class="actors-grid" :class="`grid-${gridSize}`">
-              <el-card
-                v-for="item in sortedItems"
-                :key="item.id"
-                class="actor-card"
-                shadow="hover"
-                @click="goToDetail(item)"
-              >
-                <div class="actor-card-inner">
-                  <div class="actor-info">
-                    <template v-if="showActorMode && item.avatar?.hasAvatar">
-                      <div class="actor-avatar-wrap">
-                        <el-image
-                          :src="item.avatar.url"
-                          fit="cover"
-                          class="actor-avatar-image"
-                        >
-                          <template #error>
-                            <div class="actor-avatar-slot">加载失败</div>
-                          </template>
-                        </el-image>
-                      </div>
-                    </template>
-                    <div class="actor-name">
-                      {{
-                        item.display_name && item.display_name.trim()
-                          ? item.display_name.trim()
-                          : (item.name || '')
-                      }}
+          <div
+            v-else
+            ref="gridRef"
+            class="actors-grid"
+            :class="`grid-${gridSize}`"
+          >
+            <div
+              v-if="topPadding > 0"
+              class="virtual-spacer"
+              :style="{ height: topPadding + 'px' }"
+            />
+            <el-card
+              v-for="(item, index) in visibleItems"
+              :key="item.id"
+              class="actor-card"
+              shadow="hover"
+              @click="goToDetail(item)"
+            >
+              <div class="actor-card-inner">
+                <div class="actor-info">
+                  <template v-if="showActorMode && item.avatar?.hasAvatar">
+                    <div class="actor-avatar-wrap">
+                      <el-image
+                        :src="item.avatar.url"
+                        fit="cover"
+                        class="actor-avatar-image"
+                      >
+                        <template #error>
+                          <div class="actor-avatar-slot">加载失败</div>
+                        </template>
+                      </el-image>
                     </div>
-                    <div class="actor-meta">
-                      (<span :class="{ 'playable-count': item.playableCount > 0 }">{{ item.playableCount }}</span>/{{ item.totalCount }})
-                    </div>
+                  </template>
+                  <div class="actor-name" :title="item.display_name && item.display_name.trim()
+                        ? item.display_name.trim()
+                        : (item.name || '')">
+                    {{
+                      item.display_name && item.display_name.trim()
+                        ? item.display_name.trim()
+                        : (item.name || '')
+                    }}
                   </div>
-                  <el-icon
-                    v-if="showActorMode && item.avatar?.hasMultiple"
-                    class="actor-card-edit-icon"
-                    @click.stop="openAvatarPicker(item.name)"
-                  >
-                    <Edit />
-                  </el-icon>
+                  <div class="actor-meta">
+                    (<span :class="{ 'playable-count': item.playableCount > 0 }">{{ item.playableCount }}</span>/{{ item.totalCount }})
+                  </div>
                 </div>
-              </el-card>
+                <el-icon
+                  v-if="showActorMode && item.avatar?.hasMultiple"
+                  class="actor-card-edit-icon"
+                  @click.stop="openAvatarPicker(item.name)"
+                >
+                  <Edit />
+                </el-icon>
+              </div>
+            </el-card>
+            <div
+              v-if="bottomPadding > 0"
+              class="virtual-spacer"
+              :style="{ height: bottomPadding + 'px' }"
+            />
           </div>
         </el-card>
         <ActorAvatarPickerDialog
@@ -120,7 +137,7 @@
 
 <script setup>
 defineOptions({ name: 'ActorCatalog' });
-import { ref, onMounted, onActivated, onBeforeUnmount, computed, watch } from 'vue';
+import { ref, onMounted, onActivated, onBeforeUnmount, computed, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Edit, ZoomIn, ZoomOut, Refresh } from '@element-plus/icons-vue';
@@ -210,10 +227,16 @@ const showActorMode = computed(() =>
 
 // 获取当前目录标题
 const getCurrentCatalogTitle = () => {
-  if (isActorOnly.value) return '演员目录';
+  const total = actors.value.length || 0;
+  if (isActorOnly.value) {
+    return total > 0 ? `演员目录（${total}）` : '演员目录';
+  }
   const { type, mode } = catalogType.value;
   if (type === 'actor') {
-    return mode === 'folder' ? '文件目录' : '演员目录';
+    if (mode === 'folder') {
+      return '文件目录';
+    }
+    return total > 0 ? `演员目录（${total}）` : '演员目录';
   } else if (type === 'director') {
     return '导演列表';
   } else if (type === 'studio') {
@@ -350,6 +373,16 @@ const filteredItems = computed(() => {
   return actors.value.filter(item => item.playableCount > 0);
 });
 
+watch(filteredItems, async () => {
+  await nextTick();
+  measureGrid();
+});
+
+watch(gridSize, async () => {
+  await nextTick();
+  measureGrid();
+});
+
 const sortedItems = computed(() => {
   const list = filteredItems.value.slice();
   const { type, mode } = catalogType.value;
@@ -385,6 +418,111 @@ const sortedItems = computed(() => {
       });
   }
 });
+
+// 虚拟网格：仅渲染当前可视区域附近的演员卡片
+const gridRef = ref(null);
+const visibleStartIndex = ref(0);
+const visibleEndIndex = ref(0);
+const topPadding = ref(0);
+const bottomPadding = ref(0);
+const rowHeight = ref(0);
+const itemsPerRow = ref(1);
+const gridOffsetTop = ref(0);
+const VIRTUAL_BUFFER_ROWS = 5;
+const GRID_GAP = 8;
+const isVirtualMeasurePaused = ref(false);
+let scrollRafId = 0;
+
+const visibleItems = computed(() => {
+  return sortedItems.value.slice(visibleStartIndex.value, visibleEndIndex.value);
+});
+
+function updateVirtualRange() {
+  if (isVirtualMeasurePaused.value) return;
+  const total = sortedItems.value.length;
+  if (!total) {
+    visibleStartIndex.value = 0;
+    visibleEndIndex.value = 0;
+    topPadding.value = 0;
+    bottomPadding.value = 0;
+    return;
+  }
+  if (!rowHeight.value || !itemsPerRow.value) {
+    visibleStartIndex.value = 0;
+    visibleEndIndex.value = total;
+    topPadding.value = 0;
+    bottomPadding.value = 0;
+    return;
+  }
+
+  const totalRows = Math.ceil(total / itemsPerRow.value);
+  const rowUnit = rowHeight.value + GRID_GAP;
+  const scrollTop =
+    window.scrollY ||
+    document.documentElement.scrollTop ||
+    document.body.scrollTop ||
+    0;
+  const viewportTop = scrollTop;
+  const viewportBottom = scrollTop + window.innerHeight;
+  const gridTop = gridOffsetTop.value;
+  const gridBottom = gridTop + totalRows * rowHeight.value + Math.max(0, totalRows - 1) * GRID_GAP;
+
+  if (viewportBottom < gridTop || viewportTop > gridBottom) {
+    visibleStartIndex.value = 0;
+    visibleEndIndex.value = 0;
+    topPadding.value = 0;
+    bottomPadding.value = totalRows * rowHeight.value;
+    return;
+  }
+
+  const relativeTop = Math.max(0, viewportTop - gridTop);
+  const firstVisibleRow = Math.floor(relativeTop / rowUnit);
+  const visibleRowCount = Math.ceil(window.innerHeight / rowUnit);
+
+  const startRow = Math.max(0, firstVisibleRow - VIRTUAL_BUFFER_ROWS);
+  const endRow = Math.min(totalRows - 1, firstVisibleRow + visibleRowCount + VIRTUAL_BUFFER_ROWS);
+
+  visibleStartIndex.value = startRow * itemsPerRow.value;
+  visibleEndIndex.value = Math.min(total, (endRow + 1) * itemsPerRow.value);
+
+  topPadding.value = startRow * rowUnit;
+  bottomPadding.value = Math.max(0, (totalRows - endRow - 1) * rowUnit);
+}
+
+function measureGrid() {
+  if (isVirtualMeasurePaused.value) return;
+  const el = gridRef.value;
+  const list = sortedItems.value;
+  if (!el || !list.length) return;
+
+  const rect = el.getBoundingClientRect();
+  gridOffsetTop.value = rect.top + (window.scrollY ||
+    document.documentElement.scrollTop ||
+    document.body.scrollTop ||
+    0);
+
+  const width = el.clientWidth || rect.width;
+  const baseCardWidthMap = {
+    small: 72,
+    medium: 100,
+    large: 130,
+    xlarge: 160,
+    xxlarge: 200
+  };
+  const base = baseCardWidthMap[gridSize.value] || 100;
+  const perRow = Math.max(1, Math.floor(width / (base + GRID_GAP)));
+  itemsPerRow.value = perRow;
+
+  const firstCard = el.querySelector('.actor-card');
+  if (firstCard) {
+    const cardRect = firstCard.getBoundingClientRect();
+    rowHeight.value = cardRect.height;
+  } else {
+    rowHeight.value = 140;
+  }
+
+  updateVirtualRange();
+}
 
 // 加载过滤设置
 const loadFilterPlayable = async () => {
@@ -425,9 +563,40 @@ function onActorProfileChanged() {
   }
 }
 
-onMounted(() => {
+function handleScroll() {
+  if (isVirtualMeasurePaused.value) return;
+  if (scrollRafId) return;
+  scrollRafId = window.requestAnimationFrame(() => {
+    scrollRafId = 0;
+    updateVirtualRange();
+  });
+}
+
+function handleResize() {
+  measureGrid();
+}
+
+watch(avatarPickerVisible, async (visible) => {
+  if (visible) {
+    isVirtualMeasurePaused.value = true;
+    return;
+  }
+  isVirtualMeasurePaused.value = false;
+  await nextTick();
+  measureGrid();
+});
+
+onMounted(async () => {
   loadFilterPlayable();
-  loadCatalog();
+  await loadCatalog();
+  await nextTick();
+  measureGrid();
+  try {
+    window.addEventListener('scroll', handleScroll, { passive: true });
+  } catch (_) {}
+  try {
+    window.addEventListener('resize', handleResize);
+  } catch (_) {}
 
   window.addEventListener('actorAvatarChanged', () => {
     if (isActorOnly.value) return;
@@ -468,6 +637,16 @@ onBeforeUnmount(() => {
   try {
     window.removeEventListener('actorProfileChanged', onActorProfileChanged);
   } catch (_) {}
+  try {
+    window.removeEventListener('scroll', handleScroll);
+  } catch (_) {}
+  try {
+    window.removeEventListener('resize', handleResize);
+  } catch (_) {}
+  if (scrollRafId) {
+    window.cancelAnimationFrame(scrollRafId);
+    scrollRafId = 0;
+  }
 });
 
 watch(
@@ -508,6 +687,9 @@ watch(
   display: grid;
   gap: 8px;
   padding: 16px 0;
+}
+.virtual-spacer {
+  grid-column: 1 / -1;
 }
 .actors-grid.grid-small {
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -654,6 +836,9 @@ watch(
   font-weight: bold;
   margin-bottom: 2px;
   color: var(--content-title-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .actors-grid.grid-small .actor-name { font-size: 11px; }
 .actors-grid.grid-large .actor-name { font-size: 13px; }

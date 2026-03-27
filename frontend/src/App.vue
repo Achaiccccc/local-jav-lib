@@ -70,21 +70,29 @@ const scrollThreshold = 10; // 滚动阈值，避免微小滚动触发
 
 const handleScroll = () => {
   const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-  
+  const bodyClassList = typeof document !== 'undefined' && document.body
+    ? document.body.classList
+    : null;
+  // 弹框打开/关闭触发的滚动锁切换会产生非用户滚动，避免误触发导航栏显隐
+  if (bodyClassList && bodyClassList.contains('el-overlay-parent--hidden')) {
+    lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
+    return;
+  }
+
   // 如果滚动距离很小，不改变菜单状态
   if (Math.abs(currentScrollTop - lastScrollTop) < scrollThreshold) {
     return;
   }
-  
+
   // 向下滚动：隐藏菜单
   if (currentScrollTop > lastScrollTop && currentScrollTop > 50) {
     menuVisible.value = false;
-  } 
+  }
   // 向上滚动：显示菜单
   else if (currentScrollTop < lastScrollTop) {
     menuVisible.value = true;
   }
-  
+
   lastScrollTop = currentScrollTop <= 0 ? 0 : currentScrollTop;
 };
 

@@ -191,9 +191,10 @@ function parseFormerNamesRaw(raw) {
 
 /**
  * 从演员数据根路径扫描 Filetree.json，更新 actor-avatar-map
- * 匹配规则：Filetree 键（去掉扩展名）与演员名做匹配，支持简繁体；若传入 getActorsWithAliases 则曾用名/显示名也参与匹配，合并到 DB 主名
+ * 匹配规则：Filetree 键（去掉扩展名）与演员名做匹配，支持简繁体；若传入 getActorsWithAliases 则曾用名/显示名也参与匹配，合并到 DB 主名。
+ * 当传入 getActorsWithAliases 时（设置页「扫描演员信息」与编辑/合并后后台刷新）：映射仅包含数据库中已有的演员；无法关联到库内任一演员的 Filetree 条目不会写入，避免外挂数据量极大时映射文件膨胀。
  * @param {string} rootPath - 演员数据根路径（如 F:\javlib\gfriends）
- * @param {() => Promise<Array<{ name: string, display_name?: string|null, former_names?: string[] }>>>} [getActorsWithAliases] - 可选，返回库中演员及曾用名，用于把 Filetree 中的别名合并到主名
+ * @param {() => Promise<Array<{ name: string, display_name?: string|null, former_names?: string[] }>>>} [getActorsWithAliases] - 可选，返回库中演员及曾用名，用于把 Filetree 中的别名合并到主名并限定写入范围
  * @returns {{ success: boolean, message?: string, actorCount?: number, imageCount?: number }}
  */
 async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
@@ -219,15 +220,18 @@ async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
   }
 
   const existingMap = readMap();
-  const byActor = JSON.parse(JSON.stringify(existingMap.byActor || {}));
+  const prevByActor = existingMap.byActor || {};
+  const filterToLibraryActors = typeof getActorsWithAliases === 'function';
 
   let aliasToCanonical = new Map();
+  const allowedCanonicals = new Set();
   if (typeof getActorsWithAliases === 'function') {
     try {
       const actors = await getActorsWithAliases();
       for (const a of actors || []) {
         const canonical = a && a.name ? String(a.name).trim() : '';
         if (!canonical) continue;
+        allowedCanonicals.add(canonical);
         const names = [canonical];
         if (a.display_name && String(a.display_name).trim()) names.push(String(a.display_name).trim());
         const former = Array.isArray(a.former_names) ? a.former_names : (a.former_names != null ? parseFormerNamesRaw(a.former_names) : []);
@@ -243,6 +247,10 @@ async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
       console.warn('scanFromActorDataPath getActorsWithAliases 失败:', e.message);
     }
   }
+
+  const byActor = filterToLibraryActors
+    ? {}
+    : JSON.parse(JSON.stringify(prevByActor));
 
   let imageCount = 0;
   const seenIdsByKey = new Map();
@@ -263,13 +271,17 @@ async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
       const targetFile = (value && typeof value === 'string') ? value.split('?')[0].trim() : '';
       if (!targetFile) continue;
       const relPath = ['Content', groupName, targetFile].join('/');
-      imageCount++;
+      if (!filterToLibraryActors) {
+        imageCount++;
+      }
       const candidate = { id: relPath, group: groupName, srcFile: displayFileName, targetFile };
 
       let mergedKey = null;
       const canonicalFromAlias = aliasToCanonical.get(actorDisplayName) || aliasToCanonical.get(toTraditional(actorDisplayName)) || aliasToCanonical.get(toSimplified(actorDisplayName));
       if (canonicalFromAlias) {
-        mergedKey = canonicalFromAlias;
+        if (!filterToLibraryActors || allowedCanonicals.has(canonicalFromAlias)) {
+          mergedKey = canonicalFromAlias;
+        }
       } else {
         const keysToTry = [actorDisplayName, toTraditional(actorDisplayName), toSimplified(actorDisplayName)];
         for (const k of keysToTry) {
@@ -289,7 +301,10 @@ async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
         if (seen.has(relPath)) continue;
         seen.add(relPath);
         byActor[mergedKey].candidates.push(candidate);
-      } else {
+        if (filterToLibraryActors) {
+          imageCount++;
+        }
+      } else if (!filterToLibraryActors) {
         byActor[actorDisplayName] = {
           candidates: [candidate],
           selectedId: null
@@ -299,11 +314,19 @@ async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
     }
   }
 
-  for (const entry of Object.values(byActor)) {
-    if (!entry.selectedId && entry.candidates && entry.candidates[0]) {
+  for (const [key, entry] of Object.entries(byActor)) {
+    if (!entry || !Array.isArray(entry.candidates)) continue;
+    if (entry.candidates.length === 0) {
+      entry.selectedId = null;
+      continue;
+    }
+    const prevEntry = prevByActor[key];
+    if (prevEntry && prevEntry.selectedId && entry.candidates.some(c => c && c.id === prevEntry.selectedId)) {
+      entry.selectedId = prevEntry.selectedId;
+    } else if (!entry.selectedId && entry.candidates[0]) {
       entry.selectedId = entry.candidates[0].id;
     }
-    if (entry.selectedId && entry.candidates) {
+    if (entry.selectedId) {
       const stillValid = entry.candidates.some(c => c.id === entry.selectedId);
       if (!stillValid) entry.selectedId = entry.candidates[0].id;
     }

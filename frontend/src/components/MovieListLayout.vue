@@ -23,6 +23,10 @@
             style="width: 180px;"
             @change="$emit('update:sortBy', $event)"
           >
+            <template v-if="favoriteListMode">
+              <el-option label="按记录时间倒序（最新在前）" value="addedAt-desc" />
+              <el-option label="按记录时间正序" value="addedAt-asc" />
+            </template>
             <el-option label="按发行时间排序-正序" value="premiered-asc" />
             <el-option label="按发行时间排序-倒序" value="premiered-desc" />
             <el-option label="按更新时间排序-正序" value="folder_updated_at-asc" />
@@ -65,7 +69,7 @@
         :style="posterWaterfallStyle"
       >
         <div
-          v-for="movie in movies"
+          v-for="(movie, index) in movies"
           :key="movie.id"
           class="poster-waterfall-item"
           :style="posterItemStyle"
@@ -75,7 +79,7 @@
         >
           <div class="poster-waterfall-img-wrap" :style="posterWrapStyle">
             <el-image
-              :src="imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''"
+              :src="getPosterSrc(movie, index)"
               fit="cover"
               class="poster-waterfall-img"
               :lazy="true"
@@ -102,9 +106,9 @@
       </el-table>
 
       <!-- 图文模式：卡片网格 -->
-      <div v-else class="movies-grid">
+      <div v-else ref="moviesGridRef" class="movies-grid">
         <el-card
-          v-for="movie in movies"
+          v-for="(movie, index) in movies"
           :key="movie.id"
           class="movie-card"
           shadow="hover"
@@ -112,8 +116,8 @@
         >
           <div class="movie-poster">
             <el-image
-              :src="imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''"
-              fit="contain"
+              :src="getPosterSrc(movie, index)"
+              fit="cover"
               style="width: 100%; height: 100%;"
               :lazy="true"
               @load="onImageLoad(movie)"
@@ -179,7 +183,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useElementSize } from '@vueuse/core';
 import { VideoPlay, Star, StarFilled } from '@element-plus/icons-vue';
 import { getImageCacheKey } from '../utils/imageLoader';
@@ -187,9 +191,17 @@ import { getImageCacheKey } from '../utils/imageLoader';
 const BASE_COL_WIDTH = 150;
 const ASPECT_RATIO = 0.7;
 const HOVER_SCALE = 1.5;
+const CARD_GRID_GAP = 16;
+const CARD_MIN_WIDTH = 210;
+const THUMBNAIL_BUFFER_ITEMS = 100;
+const CARD_BUFFER_ITEMS = 100;
+const loadedImageSetStore = new Map();
 const hoveredPoster = ref(null);
 const posterWaterfallRef = ref(null);
+const moviesGridRef = ref(null);
+const loadedImageKeySet = ref(new Set());
 const { width: waterfallWidth } = useElementSize(posterWaterfallRef);
+let imageLoadWindowRaf = 0;
 
 const posterLayout = computed(() => {
   const w = waterfallWidth.value || BASE_COL_WIDTH * 4;
@@ -233,6 +245,124 @@ function onPosterLeave() {
   hoveredPoster.value = null;
 }
 
+//列表页图片懒加载
+function getMovieLoadKey(movie, index) {
+  if (movie?.id !== null && movie?.id !== undefined) return `id:${movie.id}`;
+  if (movie?.code) return `code:${movie.code}`;
+  return `idx:${index}`;
+}
+
+function getPosterSrc(movie, index) {
+  const key = getMovieLoadKey(movie, index);
+  if (!loadedImageKeySet.value.has(key)) return '';
+  return props.imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || '';
+}
+
+function getLoadedSetStoreKey() {
+  const list = props.movies || [];
+  const total = list.length;
+  if (!total) return `${props.viewMode}:empty`;
+  const first = getMovieLoadKey(list[0], 0);
+  const last = getMovieLoadKey(list[total - 1], total - 1);
+  return `${props.viewMode}:${total}:${first}:${last}`;
+}
+
+function persistLoadedImageSet() {
+  const key = getLoadedSetStoreKey();
+  loadedImageSetStore.set(key, new Set(loadedImageKeySet.value));
+}
+
+function restoreLoadedImageSet() {
+  const key = getLoadedSetStoreKey();
+  const saved = loadedImageSetStore.get(key);
+  if (!(saved instanceof Set) || saved.size === 0) return;
+  const next = new Set(loadedImageKeySet.value);
+  for (const item of saved) next.add(item);
+  loadedImageKeySet.value = next;
+}
+
+function addLoadedImageWindow(startIndex, endIndex) {
+  const next = new Set(loadedImageKeySet.value);
+  for (let i = startIndex; i < endIndex; i++) {
+    next.add(getMovieLoadKey(props.movies[i], i));
+  }
+  loadedImageKeySet.value = next;
+  persistLoadedImageSet();
+}
+
+function getPageScrollTop() {
+  return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+}
+
+function updateImageLoadWindow() {
+  const total = props.movies.length;
+  if (total === 0) {
+    loadedImageKeySet.value = new Set();
+    return;
+  }
+  if (props.viewMode === 'text') return;
+
+  const scrollTop = getPageScrollTop();
+  const viewportBottom = scrollTop + window.innerHeight;
+  if (props.viewMode === 'thumbnail') {
+    const itemHeight = posterLayout.value.itemHeight || 0;
+    const perRow = posterLayout.value.cols || 1;
+    const wrapEl = posterWaterfallRef.value;
+    if (!wrapEl || !itemHeight || !perRow) {
+      addLoadedImageWindow(0, Math.min(total, THUMBNAIL_BUFFER_ITEMS * 2));
+      return;
+    }
+    const rect = wrapEl.getBoundingClientRect();
+    const gridTop = rect.top + scrollTop;
+    const relativeTop = Math.max(0, scrollTop - gridTop);
+    const firstVisibleRow = Math.floor(relativeTop / itemHeight);
+    const visibleRowCount = Math.max(1, Math.ceil(window.innerHeight / itemHeight));
+    const firstVisibleIndex = firstVisibleRow * perRow;
+    const visibleItemCount = visibleRowCount * perRow;
+    const start = Math.max(0, firstVisibleIndex - THUMBNAIL_BUFFER_ITEMS);
+    const end = Math.min(total, firstVisibleIndex + visibleItemCount + THUMBNAIL_BUFFER_ITEMS);
+    addLoadedImageWindow(start, end);
+    return;
+  }
+
+  const wrapEl = moviesGridRef.value;
+  if (!wrapEl) {
+    addLoadedImageWindow(0, Math.min(total, CARD_BUFFER_ITEMS * 2));
+    return;
+  }
+  const rect = wrapEl.getBoundingClientRect();
+  const gridTop = rect.top + scrollTop;
+  const width = wrapEl.clientWidth || rect.width || CARD_MIN_WIDTH;
+  const perRow = Math.max(1, Math.floor((width + CARD_GRID_GAP) / (CARD_MIN_WIDTH + CARD_GRID_GAP)));
+  const firstCard = wrapEl.querySelector('.movie-card');
+  const rowHeight = firstCard ? firstCard.getBoundingClientRect().height : 360;
+  const rowUnit = rowHeight + CARD_GRID_GAP;
+  const relativeTop = Math.max(0, scrollTop - gridTop);
+  const firstVisibleRow = Math.floor(relativeTop / rowUnit);
+  const visibleRowCount = Math.max(1, Math.ceil((viewportBottom - scrollTop) / rowUnit) + 1);
+  const firstVisibleIndex = firstVisibleRow * perRow;
+  const visibleItemCount = visibleRowCount * perRow;
+  const start = Math.max(0, firstVisibleIndex - CARD_BUFFER_ITEMS);
+  const end = Math.min(total, firstVisibleIndex + visibleItemCount + CARD_BUFFER_ITEMS);
+  addLoadedImageWindow(start, end);
+}
+
+function scheduleUpdateImageLoadWindow() {
+  if (imageLoadWindowRaf) return;
+  imageLoadWindowRaf = window.requestAnimationFrame(() => {
+    imageLoadWindowRaf = 0;
+    updateImageLoadWindow();
+  });
+}
+
+function handleWindowScroll() {
+  scheduleUpdateImageLoadWindow();
+}
+
+function handleWindowResize() {
+  scheduleUpdateImageLoadWindow();
+}
+
 const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'playVideo', 'toggleFavorite']);
 
 function onPosterClick(movie) {
@@ -258,7 +388,9 @@ const props = defineProps({
   /** 按影片 code 的收藏夹 id 列表，用于判断是否已收藏：{ [code]: string[] } */
   favoriteFolderIdsByCode: { type: Object, default: () => ({}) },
   /** 列表页路由版本号：每次路由变化递增，用于清理缩图悬浮放大层 */
-  routeVersion: { type: Number, default: 0 }
+  routeVersion: { type: Number, default: 0 },
+  /** 收藏夹影片列表：增加按收藏/最近播放记录时间的排序项 */
+  favoriteListMode: { type: Boolean, default: false }
 });
 
 watch(
@@ -268,6 +400,39 @@ watch(
     hoveredPoster.value = null;
   }
 );
+
+watch(
+  () => [props.movies, props.viewMode, posterLayout.value.cols, posterLayout.value.itemHeight],
+  async () => {
+    await nextTick();
+    restoreLoadedImageSet();
+    scheduleUpdateImageLoadWindow();
+  }
+);
+
+onMounted(async () => {
+  await nextTick();
+  scheduleUpdateImageLoadWindow();
+  try {
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+  } catch (_) {}
+  try {
+    window.addEventListener('resize', handleWindowResize);
+  } catch (_) {}
+});
+
+onBeforeUnmount(() => {
+  try {
+    window.removeEventListener('scroll', handleWindowScroll);
+  } catch (_) {}
+  try {
+    window.removeEventListener('resize', handleWindowResize);
+  } catch (_) {}
+  if (imageLoadWindowRaf) {
+    window.cancelAnimationFrame(imageLoadWindowRaf);
+    imageLoadWindowRaf = 0;
+  }
+});
 
 function isFavorited(movie) {
   if (!movie?.code) return false;
@@ -491,5 +656,9 @@ const onImageLoad = (movie) => {
   display: flex;
   justify-content: center;
 }
+
+/* :deep(.movies-grid .el-card__body) {
+  padding: 10px 10px 0;
+} */
 </style>
 
