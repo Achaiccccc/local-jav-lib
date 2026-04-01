@@ -227,16 +227,15 @@ const showActorMode = computed(() =>
 
 // 获取当前目录标题
 const getCurrentCatalogTitle = () => {
-  const total = actors.value.length || 0;
   if (isActorOnly.value) {
-    return total > 0 ? `演员目录（${total}）` : '演员目录';
+    return actors.value.length > 0 ? `演员目录（${actors.value.length}）` : '演员目录';
   }
   const { type, mode } = catalogType.value;
   if (type === 'actor') {
     if (mode === 'folder') {
       return '文件目录';
     }
-    return total > 0 ? `演员目录（${total}）` : '演员目录';
+    return actors.value.length > 0 ? `演员目录（${actors.value.length}）` : '演员目录';
   } else if (type === 'director') {
     return '导演列表';
   } else if (type === 'studio') {

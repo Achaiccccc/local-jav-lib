@@ -3,7 +3,7 @@
     <el-container>
       <el-header class="page-header">
         <div class="header-content">
-          <h1 class="header-title">收藏夹（{{ folders.length }}）</h1>
+          <h1 class="header-title">{{ `收藏夹` }}</h1>
           <div class="header-actions">
             <ThemeSwitch />
           </div>

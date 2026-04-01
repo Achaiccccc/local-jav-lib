@@ -5,7 +5,7 @@
         <div class="header-content">
           <div class="header-left" :class="{ 'no-back': listType === 'home' }">
             <el-button v-if="listType !== 'home'" @click="goBack" icon="ArrowLeft">返回</el-button>
-            <h1 class="header-title">{{ headerTitle }}</h1>
+            <h1 class="header-title">{{ `${headerTitle}（${total}）` }}</h1>
           </div>
           <ThemeSwitch />
         </div>
