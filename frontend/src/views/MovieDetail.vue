@@ -11,227 +11,233 @@
         </div>
       </el-header>
       <el-main class="page-theme-bg">
-        <el-card v-if="loading">加载中...</el-card>
-        <el-card v-else-if="!movie" class="empty-state">
-          <el-empty description="影片不存在" />
-        </el-card>
-        <div v-else class="movie-content">
-          <div class="movie-left">
-            <div class="image-wrapper">
-              <el-image
-                :src="getPosterUrl()"
-                fit="cover"
-                class="poster-image"
-                :preview-src-list="[getPosterUrl()]"
-                :lazy="true"
-                :preview-teleported="true"
-                :hide-on-click-modal="true"
-              >
-                <template #error>
-                  <div class="image-slot">暂无封面</div>
-                </template>
-              </el-image>
+        <div class="detail-content-wrap">
+          <el-card v-if="loading">加载中...</el-card>
+          <el-card v-else-if="!movie" class="empty-state">
+            <el-empty description="影片不存在" />
+          </el-card>
+          <div v-else class="movie-content">
+            <div class="movie-left">
+              <div class="image-wrapper">
+                <el-image
+                  :src="getPosterUrl()"
+                  fit="cover"
+                  class="poster-image"
+                  :preview-src-list="[getPosterUrl()]"
+                  :lazy="true"
+                  :preview-teleported="true"
+                  :hide-on-click-modal="true"
+                >
+                  <template #error>
+                    <div class="image-slot">暂无封面</div>
+                  </template>
+                </el-image>
+              </div>
             </div>
-          </div>
-          <div class="movie-right">
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="标题">
-                {{ movie.title }}
-              </el-descriptions-item>
-              <el-descriptions-item label="识别码">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <el-link type="primary" @click="goToSeries(movie.code)">
-                    {{ movie.code }}
-                  </el-link>
-                  <el-icon 
-                    class="copy-icon" 
-                    @click="copyCode(movie.code)"
-                    style="cursor: pointer; color: #409eff;"
-                    :size="16"
-                  >
-                    <DocumentCopy />
-                  </el-icon>
-                </div>
-              </el-descriptions-item>
-              <el-descriptions-item label="发行日期">
-                {{ movie.premiered || '未知' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="片长">
-                {{ movie.runtime ? movie.runtime + ' 分钟' : '未知' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="演员">
-                <div v-if="movie.actors && movie.actors.length > 0" class="actor-list-wrap">
-                  <template v-if="movie.actors.some(a => a.avatar?.hasAvatar)">
-                    <div class="actor-list-grid">
-                      <div
-                        v-for="(actor, index) in movie.actors"
-                        :key="actor.id || `actor-${index}`"
-                        class="actor-cell"
-                      >
+            <div class="movie-right">
+              <el-descriptions :column="1" border>
+                <el-descriptions-item label="标题">
+                  {{ movie.title }}
+                </el-descriptions-item>
+                <el-descriptions-item label="识别码">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <el-link type="primary" @click="goToSeries(movie.code)">
+                      {{ movie.code }}
+                    </el-link>
+                    <el-icon 
+                      class="copy-icon" 
+                      @click="copyCode(movie.code)"
+                      style="cursor: pointer; color: #409eff;"
+                      :size="16"
+                    >
+                      <DocumentCopy />
+                    </el-icon>
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="发行日期">
+                  {{ movie.premiered || '未知' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="片长">
+                  {{ movie.runtime ? movie.runtime + ' 分钟' : '未知' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="演员">
+                  <div v-if="movie.actors && movie.actors.length > 0" class="actor-list-wrap">
+                    <template v-if="movie.actors.some(a => a.avatar?.hasAvatar)">
+                      <div class="actor-list-grid">
                         <div
-                          class="actor-avatar-wrap"
-                          :class="{ clickable: actor.inDatabase }"
-                          @click="actor.inDatabase && goToActor(actor.id)"
+                          v-for="(actor, index) in movie.actors"
+                          :key="actor.id || `actor-${index}`"
+                          class="actor-cell"
                         >
-                          <el-image
-                            v-if="actor.avatar?.hasAvatar"
-                            :src="actor.avatar.url"
-                            fit="cover"
-                            class="actor-avatar-img"
-                            :preview-src-list="[actor.avatar.url]"
-                            :preview-teleported="true"
-                            :hide-on-click-modal="true"
+                          <div
+                            class="actor-avatar-wrap"
+                            :class="{ clickable: actor.inDatabase }"
+                            @click="actor.inDatabase && goToActor(actor.id)"
                           >
-                            <template #error>
-                              <div class="actor-avatar-placeholder">加载失败</div>
-                            </template>
-                          </el-image>
-                          <div v-else class="actor-avatar-placeholder">无头像</div>
-                        </div>
-                        <div
-                          class="actor-name-text"
-                          :class="{ disabled: !actor.inDatabase }"
-                          @click="actor.inDatabase && goToActor(actor.id)"
-                        >
-                          {{ actor.display_name && actor.display_name.trim() ? actor.display_name.trim() : (actor.name || '') }}
+                            <el-image
+                              v-if="actor.avatar?.hasAvatar"
+                              :src="actor.avatar.url"
+                              fit="cover"
+                              class="actor-avatar-img"
+                              :preview-src-list="[actor.avatar.url]"
+                              :preview-teleported="true"
+                              :hide-on-click-modal="true"
+                            >
+                              <template #error>
+                                <div class="actor-avatar-placeholder">加载失败</div>
+                              </template>
+                            </el-image>
+                            <div v-else class="actor-avatar-placeholder">无头像</div>
+                          </div>
+                          <div
+                            class="actor-name-text"
+                            :class="{ disabled: !actor.inDatabase }"
+                            @click="actor.inDatabase && goToActor(actor.id)"
+                          >
+                            {{ actor.display_name && actor.display_name.trim() ? actor.display_name.trim() : (actor.name || '') }}
+                          </div>
                         </div>
                       </div>
+                    </template>
+                    <div v-else class="link-list">
+                      <el-link
+                        v-for="(actor, index) in movie.actors"
+                        :key="actor.id || `actor-${index}`"
+                        :type="actor.inDatabase ? 'primary' : 'info'"
+                        :disabled="!actor.inDatabase"
+                        :style="{ 
+                          marginRight: '8px',
+                          color: actor.inDatabase ? '' : '#909399',
+                          cursor: actor.inDatabase ? 'pointer' : 'not-allowed'
+                        }"
+                        @click="actor.inDatabase && goToActor(actor.id)"
+                      >
+                        {{ actor.display_name && actor.display_name.trim() ? actor.display_name.trim() : (actor.name || '') }}
+                      </el-link>
                     </div>
-                  </template>
-                  <div v-else class="link-list">
+                  </div>
+                <span v-else>未知</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="导演">
+                  <el-link v-if="movie.director && movie.director.id" type="primary" @click="goToDirector(movie.director.id)">
+                    {{ movie.director.name || movie.director }}
+                  </el-link>
+                  <span v-else style="color: #909399;">未知</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="制作商">
+                  <el-link v-if="movie.studio && movie.studio.id" type="primary" @click="goToStudio(movie.studio.id)">
+                    {{ movie.studio.name }}
+                  </el-link>
+                  <span v-else style="color: #909399;">未知</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="类别">
+                  <div v-if="movie.genres && movie.genres.length > 0" class="link-list">
                     <el-link
-                      v-for="(actor, index) in movie.actors"
-                      :key="actor.id || `actor-${index}`"
-                      :type="actor.inDatabase ? 'primary' : 'info'"
-                      :disabled="!actor.inDatabase"
-                      :style="{ 
-                        marginRight: '8px',
-                        color: actor.inDatabase ? '' : '#909399',
-                        cursor: actor.inDatabase ? 'pointer' : 'not-allowed'
-                      }"
-                      @click="actor.inDatabase && goToActor(actor.id)"
+                      v-for="genre in movie.genres"
+                      :key="genre.id"
+                      type="primary"
+                      style="margin-right: 8px;"
+                      @click="goToGenre(genre.id)"
                     >
-                      {{ actor.display_name && actor.display_name.trim() ? actor.display_name.trim() : (actor.name || '') }}
+                      {{ genre.name }}
                     </el-link>
                   </div>
-                </div>
-                <span v-else>未知</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="导演">
-                <el-link v-if="movie.director && movie.director.id" type="primary" @click="goToDirector(movie.director.id)">
-                  {{ movie.director.name || movie.director }}
-                </el-link>
-                <span v-else style="color: #909399;">未知</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="制作商">
-                <el-link v-if="movie.studio && movie.studio.id" type="primary" @click="goToStudio(movie.studio.id)">
-                  {{ movie.studio.name }}
-                </el-link>
-                <span v-else style="color: #909399;">未知</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="类别">
-                <div v-if="movie.genres && movie.genres.length > 0" class="link-list">
-                  <el-link
-                    v-for="genre in movie.genres"
-                    :key="genre.id"
-                    type="primary"
-                    style="margin-right: 8px;"
-                    @click="goToGenre(genre.id)"
+                  <span v-else>未知</span>
+                </el-descriptions-item>
+              <el-descriptions-item label="操作">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                  <el-button
+                    :type="detailFavoriteFolderIds.length > 0 ? 'danger' : 'default'"
+                    @click="openFavoriteDialog"
+                    :icon="detailFavoriteFolderIds.length > 0 ? StarFilled : Star"
                   >
-                    {{ genre.name }}
-                  </el-link>
+                    {{ detailFavoriteFolderIds.length > 0 ? '取消收藏' : '收藏' }}
+                  </el-button>
+                  <el-button type="primary" @click="editMovie" icon="Edit">编辑</el-button>
+                  <el-button
+                    @click="openFileLocation"
+                    icon="FolderOpened"
+                    class="open-location-btn"
+                  >
+                    打开文件所在位置
+                  </el-button>
                 </div>
-                <span v-else>未知</span>
               </el-descriptions-item>
-            </el-descriptions>
+              </el-descriptions>
             <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-              <el-button v-if="movie.playable" type="success" @click="playVideo" icon="VideoPlay">
-                播放
+                <el-button v-if="movie.playable" type="success" @click="playVideo" icon="VideoPlay">
+                  播放
+                </el-button>
+              </div>
+            </div>
+          </div>
+
+          <FavoriteFoldersDialog
+            v-model="favoriteDialogVisible"
+            :movie="movie"
+            @done="onFavoriteDialogDone"
+          />
+
+          <!-- 预览图：仅当存在多于一张图（详情图+至少一张 extrafanart）时展示；大图轮播中下方显示页数 -->
+          <div v-if="movie && hasPreviewImages" class="detail-section preview-section">
+            <div class="section-title">预览图</div>
+            <div class="preview-strip">
+              <div
+                v-for="(url, idx) in previewImageUrls"
+                :key="idx"
+                class="preview-thumb-wrap"
+                @click="openPreview(idx)"
+              >
+                <el-image
+                  :src="url"
+                  fit="cover"
+                  class="preview-thumb"
+                  :preview-teleported="true"
+                >
+                  <template #error>
+                    <div class="preview-thumb-slot">加载失败</div>
+                  </template>
+                </el-image>
+              </div>
+            </div>
+          </div>
+
+          <el-image-viewer
+            v-if="previewVisible"
+            :url-list="previewImageUrls"
+            :initial-index="previewCurrentIndex"
+            :hide-on-click-modal="true"
+            :teleported="true"
+            @switch="onPreviewSwitch"
+            @close="closePreview"
+          />
+          <Teleport to="body">
+            <div v-if="previewVisible && previewImageUrls.length > 0" class="preview-viewer-page-indicator">
+              {{ previewPageText }}
+            </div>
+          </Teleport>
+
+          <!-- 作品简介：来自 NFO 的 originalplot/plot，无则不展示 -->
+          <div v-if="movie && hasSynopsis" class="detail-section synopsis-section">
+            <div class="section-title">作品简介</div>
+            <div v-if="hasDualSynopsis" class="synopsis-switch">
+              <el-button
+                size="small"
+                :type="activeSynopsisKey === 'originalplot' ? 'primary' : 'default'"
+                @click="activeSynopsisKey = 'originalplot'"
+              >
+                简介1
               </el-button>
               <el-button
-                :type="detailFavoriteFolderIds.length > 0 ? 'danger' : 'default'"
-                @click="openFavoriteDialog"
-                :icon="detailFavoriteFolderIds.length > 0 ? StarFilled : Star"
+                size="small"
+                :type="activeSynopsisKey === 'plot' ? 'primary' : 'default'"
+                @click="activeSynopsisKey = 'plot'"
               >
-                {{ detailFavoriteFolderIds.length > 0 ? '取消收藏' : '收藏' }}
-              </el-button>
-              <el-button type="primary" @click="editMovie" icon="Edit">编辑</el-button>
-              <el-button 
-                @click="openFileLocation" 
-                icon="FolderOpened"
-                class="open-location-btn"
-              >
-                打开文件所在位置
+                简介2
               </el-button>
             </div>
+            <div class="synopsis-text">{{ activeSynopsisText }}</div>
           </div>
-        </div>
-
-        <FavoriteFoldersDialog
-          v-model="favoriteDialogVisible"
-          :movie="movie"
-          @done="onFavoriteDialogDone"
-        />
-
-        <!-- 预览图：仅当存在多于一张图（详情图+至少一张 extrafanart）时展示；大图轮播中下方显示页数 -->
-        <div v-if="movie && hasPreviewImages" class="detail-section preview-section">
-          <div class="section-title">预览图</div>
-          <div class="preview-strip">
-            <div
-              v-for="(url, idx) in previewImageUrls"
-              :key="idx"
-              class="preview-thumb-wrap"
-              @click="openPreview(idx)"
-            >
-              <el-image
-                :src="url"
-                fit="cover"
-                class="preview-thumb"
-                :preview-teleported="true"
-              >
-                <template #error>
-                  <div class="preview-thumb-slot">加载失败</div>
-                </template>
-              </el-image>
-            </div>
-          </div>
-        </div>
-
-        <el-image-viewer
-          v-if="previewVisible"
-          :url-list="previewImageUrls"
-          :initial-index="previewCurrentIndex"
-          :hide-on-click-modal="true"
-          :teleported="true"
-          @switch="onPreviewSwitch"
-          @close="closePreview"
-        />
-        <Teleport to="body">
-          <div v-if="previewVisible && previewImageUrls.length > 0" class="preview-viewer-page-indicator">
-            {{ previewPageText }}
-          </div>
-        </Teleport>
-
-        <!-- 作品简介：来自 NFO 的 originalplot/plot，无则不展示 -->
-        <div v-if="movie && hasSynopsis" class="detail-section synopsis-section">
-          <div class="section-title">作品简介</div>
-          <div v-if="hasDualSynopsis" class="synopsis-switch">
-            <el-button
-              size="small"
-              :type="activeSynopsisKey === 'originalplot' ? 'primary' : 'default'"
-              @click="activeSynopsisKey = 'originalplot'"
-            >
-              简介1
-            </el-button>
-            <el-button
-              size="small"
-              :type="activeSynopsisKey === 'plot' ? 'primary' : 'default'"
-              @click="activeSynopsisKey = 'plot'"
-            >
-              简介2
-            </el-button>
-          </div>
-          <div class="synopsis-text">{{ activeSynopsisText }}</div>
         </div>
         
         <!-- 编辑对话框 -->
@@ -884,25 +890,35 @@ onMounted(() => {
   padding: 40px 0;
 }
 
+.detail-content-wrap {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
 .movie-content {
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .movie-left {
-  flex: 0 0 auto;
+  flex: 0 0 800px;
+  max-width: 100%;
 }
 
 .image-wrapper {
   position: relative;
   width: 100%;
-  max-width: 600px;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .poster-image {
   width: 100%;
-  max-width: 600px;
+  aspect-ratio: 3 / 2;
   cursor: zoom-in;
   transition: transform 0.2s ease;
 }
@@ -912,8 +928,8 @@ onMounted(() => {
 }
 
 .movie-right {
-  flex: 1;
-  min-width: 300px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .image-slot {
@@ -921,7 +937,7 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   width: 100%;
-  height: 600px;
+  aspect-ratio: 3 / 2;
   background: var(--image-slot-bg);
   color: var(--image-slot-color);
   font-size: 14px;
@@ -1074,6 +1090,39 @@ onMounted(() => {
 
 .preview-thumb-wrap {
   cursor: zoom-in;
+}
+
+@media (max-width: 1360px) {
+  .movie-left {
+    flex: 0 0 600px;
+  }
+
+  .image-wrapper {
+    max-width: 600px;
+  }
+}
+
+@media (max-width: 960px) {
+  .movie-content {
+    justify-content: center;
+  }
+
+  .movie-left,
+  .movie-right {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .movie-left {
+    display: flex;
+    justify-content: center;
+  }
+
+  .image-wrapper {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+  }
 }
 
 </style>
