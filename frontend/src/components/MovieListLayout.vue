@@ -40,16 +40,37 @@
         <div class="toolbar-right">
           <!-- 抽奖入口：在视图模式左侧 -->
           <slot name="before-view-mode" />
-          <el-radio-group
-            v-if="enableViewModeToggle"
-            class="view-mode-toggle"
-            :model-value="viewMode"
-            @change="$emit('update:viewMode', $event)"
-          >
-            <el-radio-button label="thumbnail">缩图模式</el-radio-button>
-            <el-radio-button label="text">文字模式</el-radio-button>
-            <el-radio-button label="card">图文模式</el-radio-button>
-          </el-radio-group>
+          <div v-if="enableViewModeToggle" class="view-mode-block">
+            <el-radio-group
+              class="view-mode-toggle"
+              :model-value="viewMode"
+              @change="$emit('update:viewMode', $event)"
+            >
+              <el-radio-button label="thumbnail">缩图模式</el-radio-button>
+              <el-radio-button label="text">文字模式</el-radio-button>
+              <el-radio-button label="card">图文模式</el-radio-button>
+            </el-radio-group>
+            <el-radio-group
+              v-if="viewMode === 'card'"
+              class="image-type-toggle"
+              size="small"
+              :model-value="cardImageType"
+              @change="$emit('update:cardImageType', $event)"
+            >
+              <el-radio-button label="poster">封面图展示</el-radio-button>
+              <el-radio-button label="fanart">海报图展示</el-radio-button>
+            </el-radio-group>
+            <el-radio-group
+              v-else-if="viewMode === 'thumbnail'"
+              class="image-type-toggle"
+              size="small"
+              :model-value="thumbnailImageType"
+              @change="$emit('update:thumbnailImageType', $event)"
+            >
+              <el-radio-button label="poster">封面图展示</el-radio-button>
+              <el-radio-button label="fanart">海报图展示</el-radio-button>
+            </el-radio-group>
+          </div>
           <!-- 预留右侧插槽 -->
           <slot name="right-extra" />
         </div>
@@ -79,7 +100,7 @@
         >
           <div class="poster-waterfall-img-wrap" :style="posterWrapStyle">
             <el-image
-              :src="getPosterSrc(movie, index)"
+              :src="getMovieImageSrc(movie, index)"
               fit="cover"
               class="poster-waterfall-img"
               :lazy="true"
@@ -106,7 +127,7 @@
       </el-table>
 
       <!-- 图文模式：卡片网格 -->
-      <div v-else ref="moviesGridRef" class="movies-grid">
+      <div v-else ref="moviesGridRef" class="movies-grid" :class="{ 'is-large': isCardFanartMode }">
         <el-card
           v-for="(movie, index) in movies"
           :key="movie.id"
@@ -116,7 +137,7 @@
         >
           <div class="movie-poster">
             <el-image
-              :src="getPosterSrc(movie, index)"
+              :src="getMovieImageSrc(movie, index)"
               fit="cover"
               style="width: 100%; height: 100%;"
               :lazy="true"
@@ -189,12 +210,17 @@ import { VideoPlay, Star, StarFilled } from '@element-plus/icons-vue';
 import { getImageCacheKey } from '../utils/imageLoader';
 
 const BASE_COL_WIDTH = 150;
-const ASPECT_RATIO = 0.7;
+const THUMBNAIL_POSTER_ASPECT_RATIO = 0.7;
+const THUMBNAIL_FANART_ASPECT_RATIO = 3 / 2;
+const BASE_THUMBNAIL_HEIGHT = BASE_COL_WIDTH / THUMBNAIL_POSTER_ASPECT_RATIO;
 const HOVER_SCALE = 1.5;
 const CARD_GRID_GAP = 16;
 const CARD_MIN_WIDTH = 210;
+const LARGE_CARD_MIN_WIDTH = 360;
+const LARGE_IMAGE_HEIGHT = 260;
 const THUMBNAIL_BUFFER_ITEMS = 100;
 const CARD_BUFFER_ITEMS = 100;
+const LARGE_BUFFER_ITEMS = 60;
 const loadedImageSetStore = new Map();
 const hoveredPoster = ref(null);
 const posterWaterfallRef = ref(null);
@@ -202,12 +228,23 @@ const moviesGridRef = ref(null);
 const loadedImageKeySet = ref(new Set());
 const { width: waterfallWidth } = useElementSize(posterWaterfallRef);
 let imageLoadWindowRaf = 0;
+const isCardFanartMode = computed(() => props.viewMode === 'card' && props.cardImageType === 'fanart');
+const thumbnailAspectRatio = computed(() =>
+  props.viewMode === 'thumbnail' && props.thumbnailImageType === 'fanart'
+    ? THUMBNAIL_FANART_ASPECT_RATIO
+    : THUMBNAIL_POSTER_ASPECT_RATIO
+);
+const thumbnailTargetColWidth = computed(() =>
+  props.viewMode === 'thumbnail' && props.thumbnailImageType === 'fanart'
+    ? BASE_THUMBNAIL_HEIGHT * THUMBNAIL_FANART_ASPECT_RATIO
+    : BASE_COL_WIDTH
+);
 
 const posterLayout = computed(() => {
   const w = waterfallWidth.value || BASE_COL_WIDTH * 4;
-  const cols = Math.max(1, Math.round(w / BASE_COL_WIDTH));
+  const cols = Math.max(1, Math.round(w / thumbnailTargetColWidth.value));
   const itemWidth = w / cols;
-  const itemHeight = itemWidth / ASPECT_RATIO;
+  const itemHeight = itemWidth / thumbnailAspectRatio.value;
   return { cols, itemWidth, itemHeight };
 });
 
@@ -237,7 +274,7 @@ function onPosterHover(e, movie) {
       width: `${w}px`,
       height: `${h}px`
     },
-    src: props.imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''
+    src: props.imageCache?.[getImageCacheKey(getMovieImagePathByMode(movie), movie?.data_path_index)] || ''
   };
 }
 
@@ -252,19 +289,34 @@ function getMovieLoadKey(movie, index) {
   return `idx:${index}`;
 }
 
-function getPosterSrc(movie, index) {
+function getMovieImagePathByMode(movie) {
+  if (props.viewMode === 'card') {
+    return props.cardImageType === 'fanart'
+      ? (movie?.fanart_path || movie?.poster_path || '')
+      : (movie?.poster_path || '');
+  }
+  if (props.viewMode === 'thumbnail') {
+    return props.thumbnailImageType === 'fanart'
+      ? (movie?.fanart_path || movie?.poster_path || '')
+      : (movie?.poster_path || '');
+  }
+  return movie?.poster_path || '';
+}
+
+function getMovieImageSrc(movie, index) {
   const key = getMovieLoadKey(movie, index);
   if (!loadedImageKeySet.value.has(key)) return '';
-  return props.imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || '';
+  const imagePath = getMovieImagePathByMode(movie);
+  return props.imageCache?.[getImageCacheKey(imagePath, movie?.data_path_index)] || '';
 }
 
 function getLoadedSetStoreKey() {
   const list = props.movies || [];
   const total = list.length;
-  if (!total) return `${props.viewMode}:empty`;
+  if (!total) return `${props.viewMode}:${props.cardImageType}:${props.thumbnailImageType}:empty`;
   const first = getMovieLoadKey(list[0], 0);
   const last = getMovieLoadKey(list[total - 1], total - 1);
-  return `${props.viewMode}:${total}:${first}:${last}`;
+  return `${props.viewMode}:${props.cardImageType}:${props.thumbnailImageType}:${total}:${first}:${last}`;
 }
 
 function persistLoadedImageSet() {
@@ -327,23 +379,26 @@ function updateImageLoadWindow() {
 
   const wrapEl = moviesGridRef.value;
   if (!wrapEl) {
-    addLoadedImageWindow(0, Math.min(total, CARD_BUFFER_ITEMS * 2));
+    const defaultBuffer = isCardFanartMode.value ? LARGE_BUFFER_ITEMS : CARD_BUFFER_ITEMS;
+    addLoadedImageWindow(0, Math.min(total, defaultBuffer * 2));
     return;
   }
   const rect = wrapEl.getBoundingClientRect();
   const gridTop = rect.top + scrollTop;
   const width = wrapEl.clientWidth || rect.width || CARD_MIN_WIDTH;
-  const perRow = Math.max(1, Math.floor((width + CARD_GRID_GAP) / (CARD_MIN_WIDTH + CARD_GRID_GAP)));
+  const minWidth = isCardFanartMode.value ? LARGE_CARD_MIN_WIDTH : CARD_MIN_WIDTH;
+  const perRow = Math.max(1, Math.floor((width + CARD_GRID_GAP) / (minWidth + CARD_GRID_GAP)));
   const firstCard = wrapEl.querySelector('.movie-card');
-  const rowHeight = firstCard ? firstCard.getBoundingClientRect().height : 360;
+  const rowHeight = firstCard ? firstCard.getBoundingClientRect().height : (isCardFanartMode.value ? LARGE_IMAGE_HEIGHT + 80 : 360);
   const rowUnit = rowHeight + CARD_GRID_GAP;
   const relativeTop = Math.max(0, scrollTop - gridTop);
   const firstVisibleRow = Math.floor(relativeTop / rowUnit);
   const visibleRowCount = Math.max(1, Math.ceil((viewportBottom - scrollTop) / rowUnit) + 1);
   const firstVisibleIndex = firstVisibleRow * perRow;
   const visibleItemCount = visibleRowCount * perRow;
-  const start = Math.max(0, firstVisibleIndex - CARD_BUFFER_ITEMS);
-  const end = Math.min(total, firstVisibleIndex + visibleItemCount + CARD_BUFFER_ITEMS);
+  const bufferItems = isCardFanartMode.value ? LARGE_BUFFER_ITEMS : CARD_BUFFER_ITEMS;
+  const start = Math.max(0, firstVisibleIndex - bufferItems);
+  const end = Math.min(total, firstVisibleIndex + visibleItemCount + bufferItems);
   addLoadedImageWindow(start, end);
 }
 
@@ -363,7 +418,7 @@ function handleWindowResize() {
   scheduleUpdateImageLoadWindow();
 }
 
-const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'playVideo', 'toggleFavorite']);
+const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'update:cardImageType', 'update:thumbnailImageType', 'playVideo', 'toggleFavorite']);
 
 function onPosterClick(movie) {
   hoveredPoster.value = null;
@@ -378,6 +433,8 @@ const props = defineProps({
   pageSize: { type: Number, default: 20 },
   sortBy: { type: String, default: 'premiered-desc' },
   viewMode: { type: String, default: 'card' }, // 'thumbnail' | 'text' | 'card'
+  cardImageType: { type: String, default: 'poster' }, // 'poster' | 'fanart'
+  thumbnailImageType: { type: String, default: 'poster' }, // 'poster' | 'fanart'
   imageCache: { type: Object, default: () => ({}) },
   emptyText: { type: String, default: '暂无影片数据' },
   enableViewModeToggle: { type: Boolean, default: true },
@@ -402,7 +459,7 @@ watch(
 );
 
 watch(
-  () => [props.movies, props.viewMode, posterLayout.value.cols, posterLayout.value.itemHeight],
+  () => [props.movies, props.viewMode, props.cardImageType, props.thumbnailImageType, posterLayout.value.cols, posterLayout.value.itemHeight],
   async () => {
     await nextTick();
     restoreLoadedImageSet();
@@ -472,6 +529,27 @@ const onImageLoad = (movie) => {
 .toolbar-right {
   display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.view-mode-block {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.view-mode-toggle {
+  position: relative;
+  z-index: 2;
+}
+
+.image-type-toggle {
+  position: absolute;
+  left: 40px;
+  top: calc(100% + 4px);
+  z-index: 1;
 }
 
 .empty-state {
@@ -565,6 +643,10 @@ const onImageLoad = (movie) => {
   padding: 16px 0;
 }
 
+.movies-grid.is-large {
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+}
+
 .movie-card {
   cursor: pointer;
   transition: transform 0.2s;
@@ -581,6 +663,12 @@ const onImageLoad = (movie) => {
   max-height: 300px;
   overflow: hidden;
   background-color: #f5f5f5;
+}
+
+.movies-grid.is-large .movie-poster {
+  aspect-ratio: 3 / 2;
+  min-height: 240px;
+  max-height: 280px;
 }
 
 .play-icon {

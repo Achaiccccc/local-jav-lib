@@ -107,6 +107,8 @@
           :page-size="listParams.pageSize"
           :sort-by="effectiveSortBy"
           :view-mode="listParams.viewMode"
+          :card-image-type="listParams.cardImageType"
+          :thumbnail-image-type="listParams.thumbnailImageType"
           :image-cache="imageCache"
           :empty-text="emptyText"
           :enable-view-mode-toggle="true"
@@ -117,10 +119,12 @@
           @update:currentPage="handlePageChange"
           @update:sortBy="handleSortByChange"
           @update:viewMode="handleViewModeChange"
+          @update:cardImageType="handleCardImageTypeChange"
+          @update:thumbnailImageType="handleThumbnailImageTypeChange"
           @rowClick="goToMovieDetail"
           @playVideo="onPlayVideo"
           @toggleFavorite="onToggleFavorite"
-          :load-movie-image="movie => loadMovieImage(movie.poster_path, movie.data_path_index)"
+          :load-movie-image="movie => loadMovieImage(movie, listParams.viewMode)"
           :show-favorite-heart="listType !== 'favorite' || !isRecentWatchedFolder"
           :favorite-folder-ids-by-code="favoriteFolderIdsByCode"
         >
@@ -356,6 +360,29 @@ const routeVersion = ref(0);
 
 function openSlotDialog() {
   slotDialogVisible.value = true;
+}
+
+function getPreferredImagePath(movie, viewMode = listParams.viewMode) {
+  if (viewMode === 'card') {
+    return listParams.cardImageType === 'fanart'
+      ? (movie?.fanart_path || movie?.poster_path || '')
+      : (movie?.poster_path || '');
+  }
+  if (viewMode === 'thumbnail') {
+    return listParams.thumbnailImageType === 'fanart'
+      ? (movie?.fanart_path || movie?.poster_path || '')
+      : (movie?.poster_path || '');
+  }
+  return movie?.poster_path || '';
+}
+
+function loadCurrentViewImages() {
+  loadImagesBatch(
+    movies.value,
+    imageCache.value,
+    20,
+    movie => getPreferredImagePath(movie, listParams.viewMode)
+  );
 }
 
 const editDisplayName = ref('');
@@ -844,7 +871,7 @@ const loadDataRaw = async () => {
 
   movies.value = result.data || [];
   total.value = totalCount;
-  loadImagesBatch(movies.value, imageCache.value, 20);
+  loadCurrentViewImages();
   lastRefreshedDataVersion.value = scanStore.dataVersion;
   loading.value = false;
 
@@ -865,8 +892,9 @@ const loadDataRaw = async () => {
 
 const loadData = withLoadingOptimization(loadDataRaw);
 
-async function loadMovieImage(posterPath, dataPathIndex = 0) {
-  return await loadImage(posterPath, dataPathIndex, false, imageCache.value);
+async function loadMovieImage(movie, viewMode = 'card') {
+  const imagePath = getPreferredImagePath(movie, viewMode);
+  return await loadImage(imagePath, movie?.data_path_index ?? 0, false, imageCache.value);
 }
 
 function handlePageChange(page) {
@@ -901,6 +929,21 @@ function handleSortByChange(val) {
 
 function handleViewModeChange(val) {
   listParams.setViewMode(val);
+  loadCurrentViewImages();
+}
+
+function handleCardImageTypeChange(val) {
+  listParams.setCardImageType(val);
+  if (listParams.viewMode === 'card') {
+    loadCurrentViewImages();
+  }
+}
+
+function handleThumbnailImageTypeChange(val) {
+  listParams.setThumbnailImageType(val);
+  if (listParams.viewMode === 'thumbnail') {
+    loadCurrentViewImages();
+  }
 }
 
 function goToMovieDetail(movieId) {

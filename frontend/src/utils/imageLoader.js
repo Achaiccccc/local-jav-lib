@@ -142,11 +142,17 @@ function processQueue() {
  * @param {Array} movies - 影片数组
  * @param {Object} imageCache - 图片缓存对象
  * @param {number} batchSize - 每批加载数量
+ * @param {(movie: any) => string} resolveImagePath - 图片路径解析函数（默认使用 poster_path）
  */
-export function loadImagesBatch(movies, imageCache, batchSize = 20) {
-  const moviesToLoad = movies.filter(movie =>
-    movie.poster_path && !imageCache[getImageCacheKey(movie.poster_path, movie.data_path_index)]
-  );
+export function loadImagesBatch(movies, imageCache, batchSize = 20, resolveImagePath = (movie) => movie?.poster_path) {
+  const moviesToLoad = movies
+    .map(movie => ({
+      movie,
+      imagePath: resolveImagePath(movie)
+    }))
+    .filter(item =>
+      item.imagePath && !imageCache[getImageCacheKey(item.imagePath, item.movie.data_path_index)]
+    );
   
   if (moviesToLoad.length === 0) {
     return;
@@ -154,8 +160,8 @@ export function loadImagesBatch(movies, imageCache, batchSize = 20) {
   
   // 立即加载第一批
   const firstBatch = moviesToLoad.slice(0, batchSize);
-  for (const movie of firstBatch) {
-    loadImage(movie.poster_path, movie.data_path_index, false, imageCache);
+  for (const item of firstBatch) {
+    loadImage(item.imagePath, item.movie.data_path_index, false, imageCache);
   }
   
   // 在后台分批加载剩余的图片
@@ -171,8 +177,8 @@ export function loadImagesBatch(movies, imageCache, batchSize = 20) {
         }
         
         const batch = remainingMovies.slice(currentIndex, currentIndex + batchSize);
-        for (const movie of batch) {
-          loadImage(movie.poster_path, movie.data_path_index, false, imageCache);
+        for (const item of batch) {
+          loadImage(item.imagePath, item.movie.data_path_index, false, imageCache);
         }
         currentIndex += batchSize;
         
