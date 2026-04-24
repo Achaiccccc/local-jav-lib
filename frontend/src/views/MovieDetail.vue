@@ -146,6 +146,9 @@
                 </el-descriptions-item>
               <el-descriptions-item label="操作">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                  <el-button v-if="movie.playable" type="success" @click="playVideo" icon="VideoPlay">
+                    播放
+                  </el-button>
                   <el-button
                     :type="detailFavoriteFolderIds.length > 0 ? 'danger' : 'default'"
                     @click="openFavoriteDialog"
@@ -164,11 +167,6 @@
                 </div>
               </el-descriptions-item>
               </el-descriptions>
-            <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-                <el-button v-if="movie.playable" type="success" @click="playVideo" icon="VideoPlay">
-                  播放
-                </el-button>
-              </div>
             </div>
           </div>
 
