@@ -659,6 +659,24 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       if (settingsStore.get('filterPlayable', false)) {
         where.playable = true;
       }
+      const yearCond = buildYearOrCondition(params.filterYears);
+      if (yearCond) {
+        Object.assign(where, yearCond);
+      }
+      if (Array.isArray(params.filterGenres) && params.filterGenres.length > 0) {
+        const names = params.filterGenres
+          .map(n => (typeof n === 'string' ? n.trim() : ''))
+          .filter(Boolean);
+        if (names.length > 0) {
+          const movieIds = await getMovieIdsWithAllGenres(sequelize, names);
+          if (movieIds && movieIds.length === 0) {
+            return { success: true, data: [] };
+          }
+          if (movieIds) {
+            where.id = { [Op.in]: movieIds };
+          }
+        }
+      }
       const include = [
         { model: sequelize.models.Actor, through: { attributes: [] }, attributes: ['id', 'name'] },
         { model: sequelize.models.Genre, through: { attributes: [] }, attributes: ['id', 'name'] },

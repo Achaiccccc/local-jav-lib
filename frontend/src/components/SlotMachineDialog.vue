@@ -48,11 +48,55 @@
         </div>
       </div>
       <div class="slot-actions">
+        <el-button @click="openRangeDialog">选择随机范围</el-button>
         <el-button type="primary" @click="playAgain">再来一次</el-button>
       </div>
     </template>
     <template v-else>
-      <div class="slot-empty">影片数量不足 18 条，无法抽奖</div>
+      <div class="slot-empty">
+        <span>影片数量不足 18 条，请</span>
+        <el-button type="primary" link @click="openRangeDialog">重新选择分类</el-button>
+      </div>
+    </template>
+  </el-dialog>
+
+  <el-dialog
+    v-model="rangeDialogVisible"
+    title="选择随机范围"
+    width="760px"
+    align-center
+    destroy-on-close
+    :close-on-click-modal="false"
+    class="slot-range-dialog"
+  >
+    <div class="range-filter-groups" v-if="filterGroupList.length">
+      <div
+        v-for="group in filterGroupList"
+        :key="group.key"
+        class="range-filter-group"
+      >
+        <div class="range-filter-group-row">
+          <span class="range-filter-group-label">{{ group.label }}：</span>
+          <div class="range-filter-group-tags">
+            <el-check-tag
+              v-for="opt in group.options"
+              :key="opt.value"
+              :checked="(selectedValues[group.key] || []).includes(opt.value)"
+              @click="handleTagClick(group, opt)"
+              class="range-filter-tag"
+            >
+              {{ opt.label }}
+            </el-check-tag>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="slot-empty">暂无可选分类数据</div>
+    <template #footer>
+      <div class="range-actions">
+        <el-button @click="clearRange">清空</el-button>
+        <el-button type="primary" @click="confirmRangeAndPlay">再来一次</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -62,6 +106,8 @@ defineOptions({ name: 'SlotMachineDialog' });
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { SlotMachine } from '@lucky-canvas/vue';
+import { buildFilterGroups } from '../config/genres';
+import { useGenreCategoriesStore } from '../stores/genreCategoriesStore';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false }
@@ -74,12 +120,16 @@ const dialogVisible = computed({
 });
 
 const router = useRouter();
+const genreStore = useGenreCategoriesStore();
 const slotRef = ref(null);
 const loading = ref(false);
 const slotMovies = ref([]);
 const posterUrls = ref({}); // movie.id -> 封面 data URL / blob URL
 const hasStopped = ref(false);
 const stopTimer = ref(null);
+const rangeDialogVisible = ref(false);
+const filterGroupList = ref([]);
+const selectedValues = ref({});
 
 const SLOT_COUNT = 18;
 // 每列停止时显示的奖品索引（0-17）：列0 中间行=2，列1=8，列2=14
@@ -136,6 +186,78 @@ const middleMovies = computed(() => {
   return STOP_PRIZE_INDEXES.map((idx) => list[idx]).filter(Boolean);
 });
 
+const selectedGenreNames = computed(() => {
+  const result = new Set();
+  filterGroupList.value.forEach((group) => {
+    if (group.type !== 'genre') return;
+    const values = selectedValues.value[group.key] || [];
+    values.forEach((v) => {
+      if (v !== 'all') result.add(v);
+    });
+  });
+  return Array.from(result);
+});
+
+const selectedYears = computed(() => {
+  const yearGroup = filterGroupList.value.find((g) => g.type === 'year');
+  if (!yearGroup) return [];
+  const values = selectedValues.value[yearGroup.key] || [];
+  return values.filter((v) => v !== 'all');
+});
+
+function initFilterState() {
+  const state = {};
+  filterGroupList.value.forEach((group) => {
+    const opts = group.options || [];
+    const hasAll = opts.some((o) => o.value === 'all');
+    state[group.key] = hasAll ? ['all'] : [];
+  });
+  selectedValues.value = state;
+}
+
+function ensureFilterGroupState() {
+  const groups = buildFilterGroups(genreStore.categories);
+  filterGroupList.value = groups;
+  const next = {};
+  groups.forEach((group) => {
+    const opts = group.options || [];
+    const validValues = new Set(opts.map((opt) => opt.value));
+    const current = Array.isArray(selectedValues.value[group.key]) ? selectedValues.value[group.key] : [];
+    const filtered = current.filter((v) => validValues.has(v));
+    const hasAll = validValues.has('all');
+    if (filtered.length === 0) {
+      next[group.key] = hasAll ? ['all'] : [];
+    } else if (filtered.includes('all') && filtered.length > 1) {
+      next[group.key] = filtered.filter((v) => v !== 'all');
+    } else {
+      next[group.key] = filtered;
+    }
+  });
+  selectedValues.value = next;
+}
+
+function handleTagClick(group, option) {
+  const key = group.key;
+  const value = option.value;
+  const current = selectedValues.value[key] ? [...selectedValues.value[key]] : [];
+  if (value === 'all') {
+    selectedValues.value[key] = ['all'];
+    return;
+  }
+  const index = current.indexOf(value);
+  if (index >= 0) {
+    current.splice(index, 1);
+  } else {
+    current.push(value);
+  }
+  if (current.length === 0) {
+    const hasAll = (group.options || []).some((o) => o.value === 'all');
+    selectedValues.value[key] = hasAll ? ['all'] : [];
+  } else {
+    selectedValues.value[key] = current.filter((v) => v !== 'all');
+  }
+}
+
 async function loadPosterImages() {
   const list = slotMovies.value.slice(0, SLOT_COUNT);
   if (!list.length) return;
@@ -157,7 +279,11 @@ async function fetchRandom() {
   hasStopped.value = false;
   posterUrls.value = {};
   try {
-    const res = await window.electronAPI.movies.getRandomList({ count: SLOT_COUNT });
+    const res = await window.electronAPI.movies.getRandomList({
+      count: SLOT_COUNT,
+      filterGenres: selectedGenreNames.value,
+      filterYears: selectedYears.value
+    });
     if (res?.success && Array.isArray(res.data)) {
       slotMovies.value = res.data;
       await loadPosterImages();
@@ -201,6 +327,19 @@ function playAgain() {
   fetchRandom();
 }
 
+function clearRange() {
+  initFilterState();
+}
+
+function openRangeDialog() {
+  rangeDialogVisible.value = true;
+}
+
+function confirmRangeAndPlay() {
+  rangeDialogVisible.value = false;
+  fetchRandom();
+}
+
 function unlockBodyScroll() {
   if (typeof document === 'undefined') return;
   document.body.style.width = '';
@@ -222,9 +361,19 @@ watch(
   () => props.modelValue,
   (open) => {
     if (open) {
+      genreStore.load();
+      ensureFilterGroupState();
       fetchRandom();
     }
   }
+);
+
+watch(
+  () => genreStore.categories,
+  () => {
+    ensureFilterGroupState();
+  },
+  { deep: true, immediate: true }
 );
 </script>
 
@@ -235,6 +384,12 @@ watch(
   text-align: center;
   color: var(--el-text-color-secondary);
   font-size: 14px;
+}
+.slot-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 .slot-machine-wrap {
   display: flex;
@@ -302,6 +457,7 @@ watch(
   text-align: center;
   line-height: 1.3;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -309,5 +465,48 @@ watch(
 .slot-actions {
   display: flex;
   justify-content: center;
+  gap: 10px;
+}
+
+.range-filter-groups {
+  max-height: 58vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.range-filter-group {
+  margin-bottom: 8px;
+}
+
+.range-filter-group-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.range-filter-group-label {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--content-title-color, #303133);
+  padding-right: 8px;
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
+.range-filter-group-tags {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.range-filter-tag {
+  font-size: 12px;
+}
+
+.range-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
 }
 </style>
