@@ -35,7 +35,7 @@
               </div>
             </div>
             <div class="movie-right">
-              <el-descriptions :column="1" border>
+            <el-descriptions :column="1" border label-width="80px">
                 <el-descriptions-item label="标题">
                   {{ movie.title }}
                 </el-descriptions-item>
